@@ -3,6 +3,7 @@
 clear
 echo "Caso deseja sair deste menu precione Ctrl+C"
 echo -e "Para reiniciar a maquina virtual, saia deste menu e digite \033[1;33mreboot\033[0m e aperte a tecla ENTER"
+
 echo -e "Para desligar a máquina virtual, saia deste menu e digite \033[0;33mshutdown\033[0m e aperte a tecla ENTER"
 echo
 echo "Caso não tenha um ID para configuração da maquina entre em contato"
