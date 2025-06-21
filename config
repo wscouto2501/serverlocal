@@ -1,6 +1,9 @@
 #!/bin/bash
 
 clear
+echo "Precione Ctrl+C para sair do menu"
+echo "Para reiniciar a maquina virtual saia do menu e digite reboot"
+echo "Para desligar a maquina virtual saia do menu e digite shutdown"
 while true; do
   read -p "Digite o ID: " user_id
   read -p "Digite o usuário: " user_login
