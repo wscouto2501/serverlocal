@@ -1,9 +1,12 @@
 #!/bin/bash
 
 clear
-echo "Precione Ctrl+C para sair do menu"
-echo "Para reiniciar a maquina virtual saia do menu e digite reboot"
-echo "Para desligar a maquina virtual saia do menu e digite shutdown"
+echo "Caso deseja sair deste menu precione Ctrl+C"
+echo "Para reiniciar a maquina virtual saia deste menu e digite reboot e aperte a tecla ENTER"
+echo "Para desligar a maquina virtual saia deste menu e digite shutdown e aperte a tecla ENTER"
+echo
+echo "Caso não tenha um ID para configuração da maquina entre em contato"
+
 while true; do
   read -p "Digite o ID: " user_id
   read -p "Digite o usuário: " user_login
