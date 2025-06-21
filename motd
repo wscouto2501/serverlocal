@@ -1,36 +1,37 @@
-
-
-
-
-
-
 =============================================================================================
-                               LEIA ABAIXO
+                                    LEIA COM ATENÇÃO
 =============================================================================================
 
-Para reiniciar a máquina virtual, digite "reboot" (sem aspas) e aperte ENTER no teclado.
+🔁 **Para reiniciar a máquina virtual:**
 
-Para desligar a máquina virtual, digite "shutdown" (sem aspas) e aperte ENTER no teclado.
-Aguarde 1 minuto para o desligamento.
+1. Digite: `reboot`
+2. Pressione a tecla ENTER
 
-Se esta é a primeira vez que você acessa a máquina virtual e ainda não fez a configuração,
-é necessário ter o ID de configuração do usuário. Entre em contato.
+⛔ **Para desligar a máquina virtual:**
 
-Caso já tenha o ID de configuração e ainda não tenha configurado a máquina virtual,
-digite o comando "sudo su" (sem aspas) e aperte ENTER.
+1. Digite: `shutdown`
+2. Pressione a tecla ENTER
+3. Aguarde cerca de 1 minuto para o desligamento completo
 
-Em seguida, digite a senha "www" (sem aspas) e aperte ENTER.
+⚙️ **Se é a primeira vez que você está acessando a máquina virtual e ainda não configurou:**
 
-Vai aparecer uma linha parecida com a abaixo:
+1. Certifique-se de que você tem o **ID de configuração do usuário**  
+   👉 Se não tiver, entre em contato com o suporte.
+
+2. Digite o comando: `sudo su`  
+3. Pressione ENTER
+
+4. Quando for solicitado, digite a senha: `www`  
+5. Pressione ENTER
+
+6. Vai aparecer algo parecido com isso:
 
 root@www:/home/www#
 
-Digite novamente "www" (sem aspas) e aperte ENTER. Aguarde: o menu de configuração será aberto.
+7. Agora, digite novamente: `www`  
+8. Pressione ENTER
 
+✅ O menu de configuração será carregado automaticamente. Aguarde.
 
-
-
-
-
-
-
+---
+Se precisar de ajuda, entre em contato com o suporte.
