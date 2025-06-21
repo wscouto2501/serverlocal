@@ -1,6 +1,6 @@
-=====================================================================
+=============================================================================================
                                LEIA ABAIXO
-=====================================================================
+=============================================================================================
 
 Para reiniciar a máquina virtual, digite "reboot" (sem aspas) e aperte ENTER no teclado.
 
@@ -20,5 +20,8 @@ Vai aparecer uma linha parecida com a abaixo:
 root@www:/home/www#
 
 Digite novamente "www" (sem aspas) e aperte ENTER. Aguarde: o menu de configuração será aberto.
+
+
+
 
 
