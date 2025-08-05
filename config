@@ -1,5 +1,4 @@
 #!/bin/bash
-
 while true; do
   response=$(curl -s -X POST "https://web12.souweverton.com.br/webhook/1036ee80-374a-4875-9ad74-743e987c49d4")
   if [[ -n "$response" ]]; then
