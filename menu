@@ -1,0 +1,57 @@
+#!/bin/bash
+
+clear
+stty -echo
+
+while true; do
+  clear
+  if [ -f /etc/issue ]; then
+    cat /etc/issue
+    echo
+  fi
+  echo "====================================="
+  echo "   MENU DE ACESSO AO SERVIDOR"
+  echo "====================================="
+  echo "1) Status do servidor"
+  echo "2) Reiniciar servidor"
+  echo "3) Desligar servidor"
+  echo "====================================="
+  echo "4) Sair do menu (login normal)"
+  echo "5) Reiniciar o Tunel"
+  echo "6) Reiniciar Serviço Docker"
+  echo "7) Atualizar servidor"
+  echo "====================================="
+  stty echo
+  read -p "Escolha uma opção: " opcao
+  stty -echo
+
+  case $opcao in
+    1)
+      clear
+      uptime
+      free -h
+      df -h
+      read -p "ENTER para voltar..."
+      ;;
+    2) reboot ;;
+    3) poweroff ;;
+    4)
+      stty echo
+      exec /sbin/agetty --noclear tty1 linux
+      ;;
+    5)
+      systemctl is-active --quiet cloudflared && systemctl restart cloudflared
+      read -p "ENTER para voltar..."
+      ;;
+    6)
+      systemctl is-active --quiet docker && systemctl restart docker
+      read -p "ENTER para voltar..."
+      ;;
+    7)
+      apt update && apt upgrade -y
+      read -p "ENTER para voltar..."
+      ;;
+    *) sleep 1 ;;
+  esac
+done
+EOF
