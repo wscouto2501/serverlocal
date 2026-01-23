@@ -1,0 +1,14 @@
+cat > /target/etc/systemd/system/cloudflared-check.service << 'EOF'
+[Unit]
+Description=Verifica e instala/atualiza cloudflared no boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cloudflared-check.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
