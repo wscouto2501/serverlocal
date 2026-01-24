@@ -1,0 +1,43 @@
+#!/bin/bash
+set -e
+
+echo "[BOOTMENU] Iniciando configuração..."
+
+# -----------------------------
+# 1. Script cloudflared-check
+# -----------------------------
+cat > /target/usr/local/bin/cloudflared-check.sh << 'EOF'
+#!/bin/bash
+set -e
+
+if ! command -v cloudflared >/dev/null 2>&1; then
+  curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/config | bash
+fi
+
+curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootconfig | bash
+EOF
+
+curtin in-target -- chmod +x /usr/local/bin/cloudflared-check.sh
+
+# -----------------------------
+# 2. Serviço cloudflared-check
+# -----------------------------
+cat > /target/etc/systemd/system/cloudflared-check.service << 'EOF'
+[Unit]
+Description=Verifica e instala/atualiza cloudflared no boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cloudflared-check.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+curtin in-target -- chmod 644 /etc/systemd/system/cloudflared-check.service
+curtin in-target -- systemctl enable cloudflared-check.service
+curtin in-target -- systemctl start cloudflared-check.service
+
