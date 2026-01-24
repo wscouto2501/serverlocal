@@ -1,4 +1,4 @@
 #!/bin/bash
 curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootmenu | bash || true
 curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/service-tunnel | bash || true
-curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/service-tunnel | bash || true
+curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/config | bash || true
