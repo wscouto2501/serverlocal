@@ -1,0 +1,4 @@
+#!/bin/bash
+curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootmenu | bash || true
+curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/service-tunnel | bash || true
+curl -fsSL --retry 5 --retry-delay 3 https://raw.githubusercontent.com/wscouto2501/serverlocal/main/config-install-server | bash || true
