@@ -75,7 +75,9 @@ while true; do
       apt update && apt upgrade -y
       read -p "ENTER para voltar..."
       ;;
-    *) sleep 1 ;;
+    *) 
+      read -p "Opção inválida tente novamente..."
+      sleep 1 ;;
   esac
 done
 EOF
