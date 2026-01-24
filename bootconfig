@@ -1,3 +1,5 @@
 #!/bin/bash
-cloudflared update
-sudo apt update && sudo apt upgrade -y
+set -e
+cloudflared update || true
+apt update -y || true
+
