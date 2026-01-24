@@ -66,9 +66,4 @@ run chmod 644 /etc/systemd/system/cloudflared-check.service
 run systemctl daemon-reload
 run systemctl enable cloudflared-check.service
 
-# NÃO iniciar serviço durante ISO
-if [ "$MODE" = "CLI" ]; then
-  systemctl start cloudflared-check.service
-fi
-
 echo "[BOOTMENU] cloudflared-check configurado com sucesso"
