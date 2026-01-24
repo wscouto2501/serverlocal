@@ -23,10 +23,11 @@ RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOU
       }")
 
 # Extrai variáveis do JSON retornado
-TunnelID=$(echo "$RESPONSE" | jq -r '.[0].result.credentials_file.TunnelID')
-AccountTag=$(echo "$RESPONSE" | jq -r '.[0].result.credentials_file.AccountTag')
-TunnelSecret=$(echo "$RESPONSE" | jq -r '.[0].result.credentials_file.TunnelSecret')
-TunnelName=$(echo "$RESPONSE" | jq -r '.[0].result.credentials_file.TunnelName')
+
+TunnelID=$(echo "$RESPONSE" | jq -r '.result.credentials_file.TunnelID')
+AccountTag=$(echo "$RESPONSE" | jq -r '.result.credentials_file.AccountTag')
+TunnelSecret=$(echo "$RESPONSE" | jq -r '.result.credentials_file.TunnelSecret')
+TunnelName=$(echo "$RESPONSE" | jq -r '.result.credentials_file.TunnelName')
 
 # Define código do servidor para /etc/issue e /etc/motd
 SERVER_CODE="$TunnelName\nEntre em contato com o suporte no endereço: https://souweverton.com.br/contato"
