@@ -76,7 +76,7 @@ while true; do
       ;;
     *) 
       read -p "Opção inválida tente novamente..."
-      sleep 1 ;;
+      ;;
   esac
 done
 EOF
