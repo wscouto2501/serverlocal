@@ -1,7 +1,23 @@
-# -----------------------------
+#!/bin/bash
+set -e
+
+#################################
+# Detecta ambiente (ISO ou CLI)
+#################################
+if [ -d /target ]; then
+  ROOT="/target"
+  echo "[BOOTMENU] Ambiente de instalação (ISO) detectado"
+  RUN="curtin in-target --"
+else
+  ROOT=""
+  echo "[BOOTMENU] Sistema em execução (CLI) detectado"
+  RUN=""
+fi
+
+#################################
 # 3. Script MENU PRÉ-LOGIN
-# -----------------------------
-cat > /target/usr/local/bin/prelogin-menu.sh << 'EOF'
+#################################
+cat > "$ROOT/usr/local/bin/prelogin-menu.sh" << 'EOF'
 #!/bin/bash
 
 stty -echo
@@ -18,7 +34,7 @@ while true; do
   echo "3) Desligar servidor"
   echo "====================================="
   echo "4) Sair do menu (login normal)"
-  echo "5) Reiniciar o Tunel"
+  echo "5) Reiniciar o Túnel"
   echo "6) Reiniciar Serviço Docker"
   echo "7) Atualizar servidor"
   echo "====================================="
@@ -58,12 +74,12 @@ while true; do
 done
 EOF
 
-curtin in-target -- chmod +x /usr/local/bin/prelogin-menu.sh
+$RUN chmod +x /usr/local/bin/prelogin-menu.sh
 
-# -----------------------------
-# 4. Serviço do PRELOGIN
-# -----------------------------
-cat > /target/etc/systemd/system/prelogin-menu.service << 'EOF'
+#################################
+# 4. Serviço systemd PRELOGIN
+#################################
+cat > "$ROOT/etc/systemd/system/prelogin-menu.service" << 'EOF'
 [Unit]
 Description=Menu antes do login
 After=systemd-user-sessions.service
@@ -83,12 +99,12 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-# -----------------------------
-# 5. Ativa tudo corretamente
-# -----------------------------
-curtin in-target -- systemctl disable getty@tty1.service || true
-curtin in-target -- systemctl daemon-reload
-curtin in-target -- systemctl enable prelogin-menu.service
-curtin in-target -- systemctl start prelogin-menu.service
+#################################
+# 5. Ativação correta
+#################################
+$RUN systemctl disable getty@tty1.service || true
+$RUN systemctl daemon-reload
+$RUN systemctl enable prelogin-menu.service
+$RUN systemctl start prelogin-menu.service
 
-echo "[BOOTMENU] Configuração finalizada com sucesso"
+echo "[BOOTMENU] Menu pré-login instalado com sucesso"
