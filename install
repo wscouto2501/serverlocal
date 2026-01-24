@@ -2,5 +2,3 @@
 curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootmenu | bash || true
 curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/service-tunnel | bash || true
 curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/service-tunnel | bash || true
-
-https://web12.souweverton.com.br/webhook/dad5b129-2725-49a2-a950-44b92c4574fe
