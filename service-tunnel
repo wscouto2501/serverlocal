@@ -36,10 +36,10 @@ cat > "$ROOT/usr/local/bin/cloudflared-check.sh" << 'EOF'
 set -e
 
 if ! command -v cloudflared >/dev/null 2>&1; then
-  curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/config | bash
+  curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/config | bash || true
 fi
 
-curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootconfig | bash
+curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootconfig | bash || true
 EOF
 
 run chmod +x /usr/local/bin/cloudflared-check.sh
