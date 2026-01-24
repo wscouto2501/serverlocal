@@ -2,6 +2,7 @@
 apt update || true
 apt install -y nano openssh-server jq curl || true
 
+clear
 # Solicita dados do usuário
 read -p "Informe o ACCOUNT_ID do Cloudflare: " ACCOUNT_ID </dev/tty
 read -s -p "Informe o CLOUDFLARE_API_TOKEN: " CLOUDFLARE_API_TOKEN </dev/tty
@@ -9,7 +10,6 @@ echo
 
 # Gera TunnelName aleatório
 TUNNEL_NAME="server_$(tr -dc 'a-z' </dev/urandom | head -c 8)"
-
 
 echo "Criando túnel com o nome: $TUNNEL_NAME"
 
