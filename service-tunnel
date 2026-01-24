@@ -4,9 +4,20 @@ set -e
 echo "[BOOTMENU] Iniciando configuração..."
 
 # -----------------------------
+# Detecta ambiente (ISO ou CLI)
+# -----------------------------
+if [ -d /target ]; then
+  ROOT="/target"
+  RUN="curtin in-target --"
+else
+  ROOT=""
+  RUN=""
+fi
+
+# -----------------------------
 # 1. Script cloudflared-check
 # -----------------------------
-cat > /target/usr/local/bin/cloudflared-check.sh << 'EOF'
+cat > "$ROOT/usr/local/bin/cloudflared-check.sh" << 'EOF'
 #!/bin/bash
 set -e
 
@@ -17,12 +28,12 @@ fi
 curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootconfig | bash
 EOF
 
-curtin in-target -- chmod +x /usr/local/bin/cloudflared-check.sh
+$RUN chmod +x /usr/local/bin/cloudflared-check.sh
 
 # -----------------------------
 # 2. Serviço cloudflared-check
 # -----------------------------
-cat > /target/etc/systemd/system/cloudflared-check.service << 'EOF'
+cat > "$ROOT/etc/systemd/system/cloudflared-check.service" << 'EOF'
 [Unit]
 Description=Verifica e instala/atualiza cloudflared no boot
 After=network-online.target
@@ -37,7 +48,9 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
 
-curtin in-target -- chmod 644 /etc/systemd/system/cloudflared-check.service
-curtin in-target -- systemctl enable cloudflared-check.service
-curtin in-target -- systemctl start cloudflared-check.service
+$RUN chmod 644 /etc/systemd/system/cloudflared-check.service
+$RUN systemctl daemon-reload
+$RUN systemctl enable cloudflared-check.service
+$RUN systemctl start cloudflared-check.service
 
+echo "[BOOTMENU] cloudflared-check configurado com sucesso"
