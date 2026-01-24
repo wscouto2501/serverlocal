@@ -105,6 +105,5 @@ EOF
 $RUN systemctl disable getty@tty1.service || true
 $RUN systemctl daemon-reload
 $RUN systemctl enable prelogin-menu.service
-$RUN systemctl start prelogin-menu.service
 
 echo "[BOOTMENU] Menu pré-login instalado com sucesso"
