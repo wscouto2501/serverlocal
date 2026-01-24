@@ -1,15 +1,58 @@
+#!/bin/bash
+set -e
+
+echo "[BOOTMENU] Iniciando configuração..."
+
+# -----------------------------
+# 1. Script cloudflared-check
+# -----------------------------
+cat > /target/usr/local/bin/cloudflared-check.sh << 'EOF'
+#!/bin/bash
+set -e
+
+if ! command -v cloudflared >/dev/null 2>&1; then
+  curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/config | bash
+fi
+
+curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootconfig | bash
+EOF
+
+curtin in-target -- chmod +x /usr/local/bin/cloudflared-check.sh
+
+# -----------------------------
+# 2. Serviço cloudflared-check
+# -----------------------------
+cat > /target/etc/systemd/system/cloudflared-check.service << 'EOF'
+[Unit]
+Description=Verifica e instala/atualiza cloudflared no boot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cloudflared-check.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+curtin in-target -- chmod 644 /etc/systemd/system/cloudflared-check.service
+curtin in-target -- systemctl enable cloudflared-check.service
+curtin in-target -- systemctl start cloudflared-check.service
+
+# -----------------------------
+# 3. Script MENU PRÉ-LOGIN
+# -----------------------------
 cat > /target/usr/local/bin/prelogin-menu.sh << 'EOF'
 #!/bin/bash
 
-clear
 stty -echo
 
 while true; do
   clear
-  if [ -f /etc/issue ]; then
-    cat /etc/issue
-    echo
-  fi
+  [ -f /etc/issue ] && cat /etc/issue && echo
+
   echo "====================================="
   echo "   MENU DE ACESSO AO SERVIDOR"
   echo "====================================="
@@ -22,11 +65,12 @@ while true; do
   echo "6) Reiniciar Serviço Docker"
   echo "7) Atualizar servidor"
   echo "====================================="
+
   stty echo
   read -p "Escolha uma opção: " opcao
   stty -echo
 
-  case $opcao in
+  case "$opcao" in
     1)
       clear
       uptime
@@ -41,11 +85,11 @@ while true; do
       exec /sbin/agetty --noclear tty1 linux
       ;;
     5)
-      systemctl is-active --quiet cloudflared && systemctl restart cloudflared
+      systemctl restart cloudflared || true
       read -p "ENTER para voltar..."
       ;;
     6)
-      systemctl is-active --quiet docker && systemctl restart docker
+      systemctl restart docker || true
       read -p "ENTER para voltar..."
       ;;
     7)
@@ -56,3 +100,38 @@ while true; do
   esac
 done
 EOF
+
+curtin in-target -- chmod +x /usr/local/bin/prelogin-menu.sh
+
+# -----------------------------
+# 4. Serviço do PRELOGIN
+# -----------------------------
+cat > /target/etc/systemd/system/prelogin-menu.service << 'EOF'
+[Unit]
+Description=Menu antes do login
+After=systemd-user-sessions.service
+Before=getty@tty1.service
+Conflicts=getty@tty1.service
+
+[Service]
+ExecStart=/usr/local/bin/prelogin-menu.sh
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# -----------------------------
+# 5. Ativa tudo corretamente
+# -----------------------------
+curtin in-target -- systemctl disable getty@tty1.service || true
+curtin in-target -- systemctl daemon-reload
+curtin in-target -- systemctl enable prelogin-menu.service
+curtin in-target -- systemctl start prelogin-menu.service
+
+echo "[BOOTMENU] Configuração finalizada com sucesso"
