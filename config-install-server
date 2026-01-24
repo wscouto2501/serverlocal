@@ -1,7 +1,4 @@
 #!/bin/bash
-
-ROOT="/"
-
 # Solicita dados do usuário
 read -p "Informe o ACCOUNT_ID do Cloudflare: " ACCOUNT_ID
 read -s -p "Informe o CLOUDFLARE_API_TOKEN: " CLOUDFLARE_API_TOKEN
