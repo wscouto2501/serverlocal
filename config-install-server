@@ -36,7 +36,7 @@ echo -e "$SERVER_CODE" | tee /etc/motd > /dev/null
 
 # Instala pacotes necessários
 apt update || true
-apt install -y --no-install-recommends nano openssh-server jq curl || true
+apt install -y nano openssh-server jq curl || true
 
 # Baixa cloudflared
 curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
