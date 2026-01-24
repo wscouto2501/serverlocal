@@ -70,7 +70,7 @@ while true; do
       systemctl restart docker || true
       read -p "ENTER para voltar..."
       ;;
-    7)
+    777)
       stty echo
       exec /sbin/agetty --noclear tty1 linux
       ;;
