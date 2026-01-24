@@ -1,0 +1,76 @@
+#!/bin/bash
+set -e
+export DEBIAN_FRONTEND=noninteractive
+
+ROOT="/"
+
+# Solicita dados do usuário
+read -p "Informe o ACCOUNT_ID do Cloudflare: " ACCOUNT_ID
+read -s -p "Informe o CLOUDFLARE_API_TOKEN: " CLOUDFLARE_API_TOKEN
+echo
+
+# Gera TunnelName aleatório
+TUNNEL_NAME="server_$(tr -dc 'a-z' </dev/urandom | head -c 8)"
+
+
+echo "Criando túnel com o nome: $TUNNEL_NAME"
+
+# Faz POST para criar o túnel
+RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+  -d "{
+        \"name\": \"$TUNNEL_NAME\",
+        \"config_src\": \"cloudflare\"
+      }")
+
+# Extrai variáveis do JSON retornado
+TunnelID=$(echo "$RESPONSE" | jq -r '.[0].result.credentials_file.TunnelID')
+AccountTag=$(echo "$RESPONSE" | jq -r '.[0].result.credentials_file.AccountTag')
+TunnelSecret=$(echo "$RESPONSE" | jq -r '.[0].result.credentials_file.TunnelSecret')
+TunnelName=$(echo "$RESPONSE" | jq -r '.[0].result.credentials_file.TunnelName')
+
+# Define código do servidor para /etc/issue e /etc/motd
+SERVER_CODE="$TunnelName\nEntre em contato com o suporte no endereço: https://souweverton.com.br/contato"
+echo -e "$SERVER_CODE" | tee /etc/issue > /dev/null
+echo -e "$SERVER_CODE" | tee /etc/motd > /dev/null
+
+# Instala pacotes necessários
+apt update || true
+apt install -y --no-install-recommends nano openssh-server jq curl || true
+
+# Baixa cloudflared
+curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+  -o /usr/local/bin/cloudflared
+chmod +x /usr/local/bin/cloudflared
+
+# Cria diretório de configuração
+mkdir -p /etc/cloudflared
+
+# Cria arquivo JSON com credenciais
+tee /etc/cloudflared/${TunnelID}.json > /dev/null <<EOF
+{
+  "AccountTag": "$AccountTag",
+  "TunnelSecret": "$TunnelSecret",
+  "TunnelID": "$TunnelID"
+}
+EOF
+
+# Cria config.yml
+tee /etc/cloudflared/config.yml > /dev/null <<EOF
+tunnel: ${TunnelID}
+credentials-file: /etc/cloudflared/${TunnelID}.json
+metrics: 127.0.0.1:45678
+EOF
+
+# Instala e inicia o serviço
+cloudflared service install
+systemctl enable cloudflared
+systemctl restart cloudflared
+
+# Mensagem final e reboot
+clear
+echo "Instalação concluída com sucesso! Em 10 segundos a máquina será reiniciada."
+echo
+sleep 10
+reboot
