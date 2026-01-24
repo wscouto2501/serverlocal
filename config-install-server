@@ -34,10 +34,6 @@ SERVER_CODE="$TunnelName\nEntre em contato com o suporte no endereço: https://s
 echo -e "$SERVER_CODE" | tee /etc/issue > /dev/null
 echo -e "$SERVER_CODE" | tee /etc/motd > /dev/null
 
-# Instala pacotes necessários
-apt update || true
-apt install -y nano openssh-server jq curl || true
-
 # Baixa cloudflared
 curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
   -o /usr/local/bin/cloudflared
