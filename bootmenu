@@ -60,15 +60,15 @@ while true; do
       ;;
     4)
       apt update && apt upgrade -y
-      read -p "ENTER para voltar..."
+      read -p "Sistema atualizado, precione ENTER para voltar..."
       ;;
     5)
       systemctl restart cloudflared || true
-      read -p "ENTER para voltar..."
+      read -p "Tunel reiniciado, precione ENTER para voltar..."
       ;;
     6)
       systemctl restart docker || true
-      read -p "ENTER para voltar..."
+      read -p "Serviço Docker reiniciado, precione ENTER para voltar..."
       ;;
     777)
       stty echo
