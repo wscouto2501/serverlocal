@@ -63,12 +63,22 @@ while true; do
       read -p "Sistema atualizado, precione ENTER para voltar..."
       ;;
     5)
-      systemctl restart cloudflared || true
-      read -p "Tunel reiniciado, precione ENTER para voltar..."
+      if systemctl list-unit-files | grep -q '^cloudflared\.service'; then
+        systemctl restart cloudflared
+        read -p "Tunel reiniciado, pressione ENTER para voltar..."
+      else
+        echo "❌ Tunel não existe, ainda, neste sistema."
+        read -p "Pressione ENTER para voltar..."
+      fi
       ;;
     6)
-      systemctl restart docker || true
-      read -p "Serviço Docker reiniciado, precione ENTER para voltar..."
+      if systemctl list-unit-files | grep -q '^docker\.service'; then
+        systemctl restart docker
+        read -p "Serviço Docker reiniciado, pressione ENTER para voltar..."
+      else
+        echo "❌ Serviço Docker não existe neste sistema."
+        read -p "Pressione ENTER para voltar..."
+      fi
       ;;
     777)
       stty echo
