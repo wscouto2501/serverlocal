@@ -34,16 +34,13 @@ mkdir -p "$ROOT/etc/systemd/system"
 cat > "$ROOT/usr/local/bin/cloudflared-check.sh" << 'EOF'
 #!/bin/bash
 set -euo pipefail
-
-# Se cloudflared não existir, tenta instalar
+# Verifica se cloudflared existe
 if ! command -v cloudflared >/dev/null 2>&1; then
   curl -fsSL https://souweverton.com.br/config | bash
+else
+  curl -fsSL https://souweverton.com.br/bootconfig | bash
 fi
-
-# Sempre tenta aplicar bootconfig
-curl -fsSL https://souweverton.com.br/bootconfig | bash
 EOF
-
 
 run chmod +x /usr/local/bin/cloudflared-check.sh
 
