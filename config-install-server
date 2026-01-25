@@ -8,7 +8,7 @@ while true; do
   read -p "Informe o ACCOUNT_ID do Cloudflare: " ACCOUNT_ID </dev/tty
   read -p "Informe o CLOUDFLARE_API_TOKEN: " CLOUDFLARE_API_TOKEN </dev/tty
   echo
-
+  TUNNEL_NAME="server_$(tr -dc 'a-z' </dev/urandom | head -c 8)"
   RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
@@ -20,7 +20,6 @@ while true; do
   # Verifica se a API retornou sucesso
   if echo "$RESPONSE" | jq -e '.success == true' >/dev/null 2>&1; then
     # Gera TunnelName aleatório
-    TUNNEL_NAME="server_$(tr -dc 'a-z' </dev/urandom | head -c 8)"
     echo
     echo "Criando túnel com o nome: $TUNNEL_NAME..."
     echo
