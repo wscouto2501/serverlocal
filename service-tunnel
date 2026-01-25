@@ -33,14 +33,17 @@ mkdir -p "$ROOT/etc/systemd/system"
 # -----------------------------
 cat > "$ROOT/usr/local/bin/cloudflared-check.sh" << 'EOF'
 #!/bin/bash
-set -e
+set -euo pipefail
 
+# Se cloudflared não existir, tenta instalar
 if ! command -v cloudflared >/dev/null 2>&1; then
-  curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/config | bash || true
+  curl -fsSL https://souweverton.com.br/config | bash
 fi
 
-curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootconfig | bash || true
+# Sempre tenta aplicar bootconfig
+curl -fsSL https://souweverton.com.br/bootconfig | bash
 EOF
+
 
 run chmod +x /usr/local/bin/cloudflared-check.sh
 
@@ -56,8 +59,10 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/local/bin/cloudflared-check.sh
-RemainAfterExit=yes
+Restart=on-failure
+RestartSec=30
 
+KillMode=control-group
 [Install]
 WantedBy=multi-user.target
 EOF
