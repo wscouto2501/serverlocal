@@ -2,25 +2,42 @@
 apt update || true
 apt install -y nano openssh-server jq curl || true
 
-clear
-# Solicita dados do usuário
-read -p "Informe o ACCOUNT_ID do Cloudflare: " ACCOUNT_ID </dev/tty
-read -p "Informe o CLOUDFLARE_API_TOKEN: " CLOUDFLARE_API_TOKEN </dev/tty
-echo
 
-# Gera TunnelName aleatório
-TUNNEL_NAME="server_$(tr -dc 'a-z' </dev/urandom | head -c 8)"
+while true; do
+  clear
+  read -p "Informe o ACCOUNT_ID do Cloudflare: " ACCOUNT_ID </dev/tty
+  read -s -p "Informe o CLOUDFLARE_API_TOKEN: " CLOUDFLARE_API_TOKEN </dev/tty
+  echo
 
-echo "Criando túnel com o nome: $TUNNEL_NAME"
+  RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+    -d "{
+          \"name\": \"$TUNNEL_NAME\",
+          \"config_src\": \"cloudflare\"
+        }")
 
-# Faz POST para criar o túnel
-RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  -d "{
-        \"name\": \"$TUNNEL_NAME\",
-        \"config_src\": \"cloudflare\"
-      }")
+  # Verifica se a API retornou sucesso
+  if echo "$RESPONSE" | jq -e '.success == true' >/dev/null 2>&1; then
+    # Gera TunnelName aleatório
+    TUNNEL_NAME="server_$(tr -dc 'a-z' </dev/urandom | head -c 8)"
+    echo
+    echo "Criando túnel com o nome: $TUNNEL_NAME..."
+    echo
+    echo "✅ Túnel criado com sucesso!"
+    break
+  else
+    echo
+    echo "❌ Falha ao criar o túnel."
+    echo "⚠️ ACCOUNT_ID ou API TOKEN inválidos."
+    echo
+    echo "Detalhes do erro:"
+    echo "$RESPONSE" | jq '.errors // .'
+    echo
+    read -p "Pressione ENTER para tentar novamente..." </dev/tty
+  fi
+done
+
 
 # Extrai variáveis do JSON retornado
 
