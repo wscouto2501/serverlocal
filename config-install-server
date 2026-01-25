@@ -6,7 +6,7 @@ apt install -y nano openssh-server jq curl || true
 while true; do
   clear
   read -p "Informe o ACCOUNT_ID do Cloudflare: " ACCOUNT_ID </dev/tty
-  read -s -p "Informe o CLOUDFLARE_API_TOKEN: " CLOUDFLARE_API_TOKEN </dev/tty
+  read -p "Informe o CLOUDFLARE_API_TOKEN: " CLOUDFLARE_API_TOKEN </dev/tty
   echo
 
   RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
