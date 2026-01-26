@@ -2,5 +2,6 @@
 curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootmenu | bash || true
 curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/service-tunnel | bash || true
 clear
-echo "configuração concluida, reiniciando em 10 segundos"
-sleep 10
+echo "configuração concluida, reiniciando em 5 segundos"
+sleep 5
+reboot
