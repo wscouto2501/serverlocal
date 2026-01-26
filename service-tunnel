@@ -34,11 +34,30 @@ mkdir -p "$ROOT/etc/systemd/system"
 cat > "$ROOT/usr/local/bin/cloudflared-check.sh" << 'EOF'
 #!/bin/bash
 set -euo pipefail
-# Verifica se cloudflared existe
-if ! command -v cloudflared >/dev/null 2>&1; then
-  curl -fsSL https://souweverton.com.br/config | bash
-else
-  curl -fsSL https://souweverton.com.br/bootconfig | bash
+
+CLOUDFLARED="/usr/local/bin/cloudflared"
+CONFIG_YML="/etc/cloudflared/config.yml"
+
+cloudflared_ok() {
+  [ -f "$CLOUDFLARED" ] && \
+  [ -s "$CLOUDFLARED" ] && \
+  chmod +x "$CLOUDFLARED" 2>/dev/null && \
+  "$CLOUDFLARED" --version >/dev/null 2>&1
+}
+
+if ! cloudflared_ok; then
+  rm -f "$CLOUDFLARED"
+  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+    -o "$CLOUDFLARED"
+  chmod +x "$CLOUDFLARED"
+fi
+
+if cloudflared_ok; then
+  if [ ! -f "$CONFIG_YML" ]; then
+    curl -fsSL https://souweverton.com.br/config | bash
+  else
+    curl -fsSL https://souweverton.com.br/bootconfig | bash
+  fi
 fi
 EOF
 
