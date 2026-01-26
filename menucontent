@@ -10,7 +10,7 @@ while true; do
   echo "   MENU DE ACESSO AO SERVIDOR testando para ver se muda mesmo"
   echo "======================================"
   echo "1) Status do servidor"
-  echo "2) Reiniciar servidor"
+  echo "2) Reiniciar servidor testando tambme"
   echo "3) Desligar servidor"
   echo "======================================"
   echo "4) Atualizar servidor"
