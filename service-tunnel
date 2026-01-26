@@ -55,8 +55,6 @@ fi
 if cloudflared_ok; then
   if [ ! -f "$CONFIG_YML" ]; then
     curl -fsSL https://souweverton.com.br/config | bash
-  else
-    curl -fsSL https://souweverton.com.br/bootconfig | bash
   fi
 fi
 EOF
