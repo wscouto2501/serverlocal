@@ -17,79 +17,21 @@ fi
 #################################
 # 3. Script MENU PRÉ-LOGIN
 #################################
-cat > "$ROOT/usr/local/bin/prelogin-menu.sh" << 'EOF'
-#!/bin/bash
 
-stty -echo
+MENU_URL="https://raw.githubusercontent.com/wscouto2501/serverlocal/main/menucontent"
+DESTINO="$ROOT/usr/local/bin/prelogin-menu.sh"
+TMP_FILE="$(mktemp)"
 
-while true; do
-  clear
-  [ -f /etc/issue ] && cat /etc/issue && echo
-
-  echo "======================================"
-  echo "   MENU DE ACESSO AO SERVIDOR"
-  echo "======================================"
-  echo "1) Status do servidor"
-  echo "2) Reiniciar servidor"
-  echo "3) Desligar servidor"
-  echo "======================================"
-  echo "4) Atualizar servidor"
-  echo "5) Reiniciar o Túnel"
-  echo "6) Reiniciar Serviço Docker"
-  echo "======================================"
-
-  stty echo
-  read -p "Escolha uma opção: " opcao
-  stty -echo
-
-  case "$opcao" in
-    1)
-      clear
-      uptime
-      free -h
-      df -h
-      read -p "ENTER para voltar..."
-      ;;
-    2)
-      systemctl reboot
-      exit 0
-      ;;
-    3)
-      systemctl poweroff
-      exit 0
-      ;;
-    4)
-      apt update && apt upgrade -y
-      read -p "Sistema atualizado, precione ENTER para voltar..."
-      ;;
-    5)
-      if systemctl list-unit-files | grep -q '^cloudflared\.service'; then
-        systemctl restart cloudflared
-        read -p "Tunel reiniciado, pressione ENTER para voltar..."
-      else
-        echo "❌ Tunel não existe, ainda, neste sistema."
-        read -p "Pressione ENTER para voltar..."
-      fi
-      ;;
-    6)
-      if systemctl list-unit-files | grep -q '^docker\.service'; then
-        systemctl restart docker
-        read -p "Serviço Docker reiniciado, pressione ENTER para voltar..."
-      else
-        echo "❌ Serviço Docker não existe neste sistema."
-        read -p "Pressione ENTER para voltar..."
-      fi
-      ;;
-    777)
-      stty echo
-      exec /sbin/agetty --noclear tty1 linux
-      ;;
-    *) 
-      read -p "Opção inválida tente novamente..."
-      ;;
-  esac
-done
-EOF
+# Baixa o conteúdo
+if curl -fsSL "$MENU_URL" -o "$TMP_FILE"; then
+  # Verifica se não está vazio
+  if [ -s "$TMP_FILE" ] && \
+     head -n 1 "$TMP_FILE" | grep -Eq '^#!(/usr/bin/env bash|/bin/bash)' && \
+     bash -n "$TMP_FILE" 2>/dev/null; then
+    install -m 755 "$TMP_FILE" "$DESTINO"
+  fi
+fi
+rm -f "$TMP_FILE"
 
 $RUN chmod +x /usr/local/bin/prelogin-menu.sh
 
