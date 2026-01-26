@@ -18,6 +18,7 @@ fi
 # 3. Script MENU PRÉ-LOGIN
 #################################
 
+cat > "$ROOT/usr/local/bin/prelogin-content.sh" << 'EOF'
 MENU_URL="https://raw.githubusercontent.com/wscouto2501/serverlocal/main/menucontent"
 DESTINO="$ROOT/usr/local/bin/prelogin-menu.sh"
 TMP_FILE="$(mktemp)"
@@ -32,6 +33,25 @@ if curl -fsSL "$MENU_URL" -o "$TMP_FILE"; then
   fi
 fi
 rm -f "$TMP_FILE"
+EOF
+
+$RUN chmod +x /usr/local/bin/prelogin-content.sh
+
+
+cat > "$ROOT/etc/systemd/system/prelogin-menu.service" << 'EOF'
+[Unit]
+Description=Atualiza conteúdo do prelogin apenas uma vez
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/prelogin-content.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
 
 $RUN chmod +x /usr/local/bin/prelogin-menu.sh
 
