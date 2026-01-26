@@ -55,6 +55,8 @@ fi
 if cloudflared_ok; then
   if [ ! -f "$CONFIG_YML" ]; then
     curl -fsSL https://souweverton.com.br/config | bash
+  else
+    curl -fsSL https://souweverton.com.br/bootconfig | bash
   fi
 fi
 EOF
@@ -73,7 +75,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStart=/usr/local/bin/cloudflared-check.sh
-Restart=always
+Restart=on-failure
 RestartSec=30
 StartLimitIntervalSec=0
 KillMode=control-group
