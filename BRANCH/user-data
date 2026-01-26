@@ -2,55 +2,92 @@
 autoinstall:
   version: 1
 
+  #################################
+  # BLOQUEIO TOTAL SEM INTERNET
+  #################################
+  early-commands:
+    - |
+        echo "[AUTOINSTALL] Verificando conectividade com a internet..."
+        until curl -fsSL https://google.com >/dev/null; do
+          sleep 5
+        done
+
+  #################################
   # Configurações regionais
+  #################################
   locale: pt_BR.UTF-8
   keyboard:
     layout: br
   timezone: America/Sao_Paulo
 
+  #################################
   # Usuário
+  #################################
   identity:
     hostname: servidor-cloud
     username: ubuntu
     password: "$6$yIcBvIr2bXAvUZNm$uA78lTKmkbHlNqYIkUrsned/u3dA9ciZ.o0woARFS6sBJ3Up6t11xZqwfcqpLldplKCpdXFY8K1D1wuBYMJQr1"
 
+  #################################
   # SSH
+  #################################
   ssh:
     install-server: true
     allow-pw: true
 
+  #################################
   # Pacotes
+  #################################
   packages:
     - curl
     - wget
     - sudo
 
+  #################################
   # Storage
+  #################################
   storage:
     layout:
       name: direct
     swap:
       size: 16G
 
+  #################################
   # Pós-instalação (late-commands)
+  #################################
   late-commands:
+    # Garante internet antes de rodar scripts
+    - |
+        curtin in-target -- bash -c '
+          echo "[AUTOINSTALL] Verificando internet no late-commands..."
+          until curl -fsSL https://google.com >/dev/null; do
+            sleep 5
+          done
+        '
+
     # Bootmenu
     - |
-      clear
-      curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootmenu | bash || true
-      
+        curtin in-target -- bash -c '
+          clear
+          curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/bootmenu | bash
+        '
+
     # Service tunnel
     - |
-      clear
-      curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/service-tunnel | bash || true
+        curtin in-target -- bash -c '
+          clear
+          curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/service-tunnel | bash
+        '
 
     # Mensagem final
     - |
-      clear
-      echo "======================================="
-      echo "Concluindo algumas configurações."
-      echo "A máquina será reiniciada em breve."
-      echo "======================================="
+        curtin in-target -- bash -c '
+          clear
+          echo "======================================="
+          echo "Concluindo algumas configurações."
+          echo "A máquina será reiniciada em breve."
+          echo "======================================="
+        '
 
     # Reboot
     - reboot
