@@ -7,7 +7,7 @@ while true; do
   [ -f /etc/issue ] && cat /etc/issue && echo
 
   echo "======================================"
-  echo "   MENU DE ACESSO AO SERVIDOR"
+  echo "   MENU DE ACESSO AO SERVIDOR" testando para ver se muda mesmo
   echo "======================================"
   echo "1) Status do servidor"
   echo "2) Reiniciar servidor"
