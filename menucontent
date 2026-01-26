@@ -15,7 +15,7 @@ while true; do
   echo "======================================"
   echo "4) Atualizar servidor"
   echo "5) Reiniciar o Túnel"
-  echo "6) Reiniciar Serviço Docker."
+  echo "6) Reiniciar Serviço Docker"
   echo "======================================"
 
   stty echo
