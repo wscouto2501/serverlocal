@@ -2,4 +2,4 @@
 set -e
 cloudflared update || true
 apt update -y || true
-
+systemctl stop cloudflared-check.service
