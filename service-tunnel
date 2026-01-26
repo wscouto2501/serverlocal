@@ -47,7 +47,7 @@ cloudflared_ok() {
 
 if ! cloudflared_ok; then
   rm -f "$CLOUDFLARED"
-  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloud0flared-linux-amd64 \
     -o "$CLOUDFLARED"
   chmod +x "$CLOUDFLARED"
 fi
