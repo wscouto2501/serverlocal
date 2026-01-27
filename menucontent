@@ -27,7 +27,7 @@ while true; do
       clear
       uptime
       free -h
-      df -h
+      df -h -x overlay -x tmpfs
       read -p "ENTER para voltar..."
       ;;
     2)
