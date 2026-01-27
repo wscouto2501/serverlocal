@@ -31,10 +31,12 @@ while true; do
       read -p "ENTER para voltar..."
       ;;
     2)
+      echo "Reiniciando, aguarde..."
       systemctl reboot
       exit 0
       ;;
     3)
+      echo "Desligando, aguarde..."
       systemctl poweroff
       exit 0
       ;;
