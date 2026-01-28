@@ -10,13 +10,12 @@ while true; do
   echo "   MENU DE ACESSO AO SERVIDOR"
   echo "======================================"
   echo "1) Status do servidor"
-  echo "2) Uso de processamento"
-  echo "3) Reiniciar servidor"
-  echo "4) Desligar servidor"
+  echo "2) Reiniciar servidor"
+  echo "3) Desligar servidor"
   echo "======================================"
-  echo "5) Atualizar servidor"
-  echo "6) Reiniciar o Túnel"
-  echo "7) Reiniciar Serviço Docker"
+  echo "4) Atualizar servidor"
+  echo "5) Reiniciar o Túnel"
+  echo "6) Reiniciar Serviço Docker"
   echo "======================================"
 
   stty echo
@@ -32,24 +31,20 @@ while true; do
       read -p "ENTER para voltar..."
       ;;
     2)
-      clear
-      htop
-      ;;
-    3)
       echo "Reiniciando, aguarde..."
       systemctl reboot
       exit 0
       ;;
-    4)
+    3)
       echo "Desligando, aguarde..."
       systemctl poweroff
       exit 0
       ;;
-    5)
+    4)
       apt update && apt upgrade -y
       read -p "Sistema atualizado, precione ENTER para voltar..."
       ;;
-    6)
+    5)
       if systemctl list-unit-files | grep -q '^cloudflared\.service'; then
         systemctl restart cloudflared
         read -p "Tunel reiniciado, pressione ENTER para voltar..."
@@ -58,7 +53,7 @@ while true; do
         read -p "Pressione ENTER para voltar..."
       fi
       ;;
-    7)
+    6)
       if systemctl list-unit-files | grep -q '^docker\.service'; then
         systemctl restart docker
         read -p "Serviço Docker reiniciado, pressione ENTER para voltar..."
