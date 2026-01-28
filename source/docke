@@ -23,7 +23,5 @@ fi
 echo "[OK] Docker ativo. Iniciando limpeza..."
 
 docker container prune -f
-docker volume prune -f
-docker network prune -f
 
 echo "[OK] Limpeza concluída."
