@@ -51,8 +51,9 @@ while true; do
       read -p "Sistema atualizado, precione ENTER para voltar..."
       ;;
     5)
-      echo "Reiniciando Tunel, aguarde..."
+
       if systemctl list-unit-files | grep -q '^cloudflared\.service'; then
+        echo "Reiniciando Tunel, aguarde..."
         systemctl restart cloudflared
         read -p "Tunel reiniciado, pressione ENTER para voltar..."
       else
@@ -61,8 +62,9 @@ while true; do
       fi
       ;;
     6)
-      echo "Reiniciando Docker, aguarde..."
+
       if systemctl list-unit-files | grep -q '^docker\.service'; then
+        echo "Reiniciando Docker, aguarde..."
         systemctl restart docker
         read -p "Serviço Docker reiniciado, pressione ENTER para voltar..."
       else
