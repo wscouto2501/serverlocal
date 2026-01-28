@@ -1,0 +1,29 @@
+#!/bin/bash
+
+echo "[CHECK] Verificando Docker..."
+
+# Verifica se o comando docker existe
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[ERRO] Docker não está instalado."
+  exit 0
+fi
+
+# Verifica se o serviço docker existe
+if ! systemctl list-unit-files | grep -q '^docker.service'; then
+  echo "[ERRO] Serviço docker.service não existe."
+  exit 0
+fi
+
+# Verifica se o Docker está ativo
+if ! systemctl is-active --quiet docker; then
+  echo "[ERRO] Docker não está em execução."
+  exit 0
+fi
+
+echo "[OK] Docker ativo. Iniciando limpeza..."
+
+docker container prune -f
+docker volume prune -f
+docker network prune -f
+
+echo "[OK] Limpeza concluída."
