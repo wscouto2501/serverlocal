@@ -24,11 +24,17 @@ while true; do
 
   case "$opcao" in
     1)
-      clear
-      uptime
-      free -h
-      df -h -x overlay -x tmpfs
-      read -p "ENTER para voltar..."
+      while true; do
+        clear
+        uptime
+        echo
+        free -h
+        echo
+        df -h -x overlay -x tmpfs
+        echo
+        echo "Ctrl+C para voltar"
+        sleep 1
+      done
       ;;
     2)
       echo "Reiniciando, aguarde..."
