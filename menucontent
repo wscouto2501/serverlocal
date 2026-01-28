@@ -32,8 +32,8 @@ while true; do
         echo
         df -h -x overlay -x tmpfs
         echo
-        echo "Ctrl+C para voltar"
-        sleep 1
+        echo "Enter para voltar"
+        read -t 1 key && break
       done
       ;;
     2)
