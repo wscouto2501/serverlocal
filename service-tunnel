@@ -36,7 +36,7 @@ echo "# FRONT SCALE ENV" >> ~/.bashrc
 echo "$CLEAN_ENV" >> ~/.bashrc
 
 # ================================
-# ⚡ APLICAR IMEDIATAMENTE (CORRETO)
+# ⚡ APLICAR IMEDIATAMENTE
 # ================================
 echo "$CLEAN_ENV" > /tmp/frontscale_env.sh
 source /tmp/frontscale_env.sh
