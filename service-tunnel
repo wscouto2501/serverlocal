@@ -1,169 +1,91 @@
 #!/bin/bash
-
 set -e
 
-echo "🚀 Setup Frontscale (modo completo)"
+echo "[BOOTMENU] Iniciando configuração..."
 
-# ================================
-# 📥 VARIÁVEIS DE AMBIENTE
-# ================================
-echo ""
-echo "📋 Cole TODAS as variáveis (formato: export VAR=valor)"
-echo "👉 Quando terminar, pressione CTRL + D"
-echo ""
-
-ENV_INPUT=$(cat)
-
-# limpa espaços e pega export
-CLEAN_ENV=$(echo "$ENV_INPUT" | sed 's/^[[:space:]]*//' | grep '^export ')
-
-if [ -z "$CLEAN_ENV" ]; then
-  echo "❌ Nenhuma variável válida encontrada"
-  exit 1
+# -----------------------------
+# Detecta ambiente (ISO ou CLI)
+# -----------------------------
+if [ -d /target ] && command -v curtin >/dev/null 2>&1; then
+  ROOT="/target"
+  MODE="ISO"
+else
+  ROOT=""
+  MODE="CLI"
 fi
 
-echo "💾 Salvando variáveis no ~/.bashrc..."
-
-# remove duplicadas
-while IFS= read -r line; do
-  VAR_NAME=$(echo "$line" | cut -d '=' -f1 | sed 's/export //')
-  sed -i "/^export $VAR_NAME=/d" ~/.bashrc || true
-done <<< "$CLEAN_ENV"
-
-# adiciona no final
-echo "" >> ~/.bashrc
-echo "# FRONT SCALE ENV" >> ~/.bashrc
-echo "$CLEAN_ENV" >> ~/.bashrc
-
-# ================================
-# ⚡ APLICAR IMEDIATAMENTE
-# ================================
-echo "$CLEAN_ENV" > /tmp/frontscale_env.sh
-source /tmp/frontscale_env.sh
-
-# ================================
-# 🧪 VALIDAÇÃO
-# ================================
-if [ -z "$DATABASE_URL" ]; then
-  echo "❌ DATABASE_URL não definido"
-  exit 1
-fi
-
-echo "✅ Variáveis carregadas com sucesso!"
-
-# ================================
-# 📥 MIGRATION.SQL
-# ================================
-echo ""
-echo "🧬 Cole o conteúdo do migration.sql"
-echo "👉 Quando terminar, pressione CTRL + D"
-echo ""
-
-MIGRATION_SQL=$(cat)
-
-if [ -z "$MIGRATION_SQL" ]; then
-  echo "❌ migration.sql vazio"
-  exit 1
-fi
-
-# ================================
-# 🟢 Sistema base
-# ================================
-apt update && apt upgrade -y
-
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt install -y nodejs unzip nginx postgresql postgresql-contrib
-
-npm install -g pnpm pm2
-
-systemctl enable postgresql
-systemctl start postgresql
-
-# ================================
-# 🐘 Banco
-# ================================
-echo "🗄️ Criando banco..."
-
-sudo -u postgres psql <<EOF
-CREATE USER $PGUSER WITH PASSWORD '$PGPASSWORD';
-CREATE DATABASE $PGDATABASE OWNER $PGUSER;
-GRANT ALL PRIVILEGES ON DATABASE $PGDATABASE TO $PGUSER;
-EOF
-
-# ================================
-# 📁 Projeto
-# ================================
-cd /root
-
-git clone https://github.com/wscouto2501/Front-Scale.git frontscale
-cd frontscale
-
-# ================================
-# 💾 salvar migration.sql
-# ================================
-echo "$MIGRATION_SQL" > migration.sql
-
-# ================================
-# 📦 Dependências
-# ================================
-pnpm install
-
-# ================================
-# 🧬 Rodar migration
-# ================================
-psql "$DATABASE_URL" -f migration.sql || true
-pnpm --filter @workspace/db run migrate || true
-
-# ================================
-# 🏗️ Build
-# ================================
-pnpm --filter @workspace/frontscale run build
-pnpm --filter @workspace/api-server run build
-
-# ================================
-# 📁 Frontend
-# ================================
-mkdir -p /var/www/frontscale
-cp -r /root/frontscale/artifacts/frontscale/dist/public/* /var/www/frontscale/ || true
-
-# ================================
-# 🚀 PM2
-# ================================
-pm2 start /root/frontscale/artifacts/api-server/dist/index.cjs --name frontscale
-pm2 save
-pm2 startup
-
-# ================================
-# 🌐 NGINX
-# ================================
-cat <<EOF > /etc/nginx/sites-available/frontscale
-server {
-    listen 80;
-    server_name $SITE_BASE_URL;
-
-    location / {
-        root /var/www/frontscale;
-        index index.html;
-        try_files \$uri \$uri/ /index.html;
-    }
-
-    location /api/ {
-        proxy_pass http://localhost:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_cache_bypass \$http_upgrade;
-    }
+run() {
+  if [ "$MODE" = "ISO" ]; then
+    curtin in-target -- "$@"
+  else
+    "$@"
+  fi
 }
+
+# -----------------------------
+# Garante diretórios
+# -----------------------------
+mkdir -p "$ROOT/usr/local/bin"
+mkdir -p "$ROOT/etc/systemd/system"
+
+# -----------------------------
+# 1. Script cloudflared-check
+# -----------------------------
+cat > "$ROOT/usr/local/bin/cloudflared-check.sh" << 'EOF'
+#!/bin/bash
+set -euo pipefail
+
+CLOUDFLARED="/usr/local/bin/cloudflared"
+CONFIG_YML="/etc/cloudflared/config.yml"
+
+cloudflared_ok() {
+  [ -f "$CLOUDFLARED" ] && \
+  [ -s "$CLOUDFLARED" ] && \
+  chmod +x "$CLOUDFLARED" 2>/dev/null && \
+  "$CLOUDFLARED" --version >/dev/null 2>&1
+}
+
+if ! cloudflared_ok; then
+  rm -f "$CLOUDFLARED"
+  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+    -o "$CLOUDFLARED"
+  chmod +x "$CLOUDFLARED"
+fi
+
+if cloudflared_ok; then
+  if [ ! -f "$CONFIG_YML" ]; then
+    curl -fsSL https://souweverton.com.br/config | bash
+  else
+    curl -fsSL https://souweverton.com.br/bootconfig | bash
+  fi
+fi
 EOF
 
-ln -sf /etc/nginx/sites-available/frontscale /etc/nginx/sites-enabled/
-rm -f /etc/nginx/sites-enabled/default
+run chmod +x /usr/local/bin/cloudflared-check.sh
 
-nginx -t
-systemctl restart nginx
+# -----------------------------
+# 2. Serviço cloudflared-check
+# -----------------------------
+cat > "$ROOT/etc/systemd/system/cloudflared-check.service" << 'EOF'
+[Unit]
+Description=Verifica e instala/atualiza cloudflared no boot
+After=network-online.target
+Wants=network-online.target
 
-echo ""
-echo "✅ INSTALAÇÃO FINALIZADA!"
-echo "🌐 Acesse: $SITE_BASE_URL"
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/cloudflared-check.sh
+Restart=always
+RestartSec=30
+StartLimitIntervalSec=0
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+run chmod 644 /etc/systemd/system/cloudflared-check.service
+run systemctl daemon-reload
+run systemctl enable cloudflared-check.service
+
+echo "[BOOTMENU] cloudflared-check configurado com sucesso"
