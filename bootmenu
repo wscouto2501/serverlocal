@@ -1,0 +1,93 @@
+#!/bin/bash
+set -euo pipefail
+
+#################################
+# Detecta ambiente (ISO ou CLI)
+#################################
+if [ -d /target ]; then
+  ROOT="/target"
+  RUN="curtin in-target --"
+  echo "[BOOTMENU] Ambiente ISO detectado (/target)"
+else
+  ROOT=""
+  RUN=""
+  echo "[BOOTMENU] Ambiente CLI detectado"
+fi
+
+BIN_DIR="$ROOT/usr/local/bin"
+SYSTEMD_DIR="$ROOT/etc/systemd/system"
+
+#################################
+# Script que baixa/atualiza o menu
+#################################
+cat > "$BIN_DIR/prelogin-content.sh" << 'EOF'
+#!/bin/bash
+set -euo pipefail
+
+MENU_URL="https://raw.githubusercontent.com/wscouto2501/serverlocal/main/menucontent"
+DESTINO="/usr/local/bin/prelogin-menu.sh"
+TMP_FILE="$(mktemp)"
+
+if curl -fsSL "$MENU_URL" -o "$TMP_FILE"; then
+  if [ -s "$TMP_FILE" ] \
+    && head -n 1 "$TMP_FILE" | grep -Eq '^#!(/usr/bin/env bash|/bin/bash)' \
+    && bash -n "$TMP_FILE"; then
+      install -m 755 "$TMP_FILE" "$DESTINO"
+  fi
+fi
+
+rm -f "$TMP_FILE"
+EOF
+
+$RUN chmod +x /usr/local/bin/prelogin-content.sh
+
+#################################
+# Serviço ONE-SHOT (conteúdo)
+#################################
+cat > "$SYSTEMD_DIR/prelogin-content.service" << 'EOF'
+[Unit]
+Description=Atualiza conteúdo do menu pré-login (uma vez)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/prelogin-content.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+#################################
+# Serviço do MENU pré-login (TTY1)
+#################################
+cat > "$SYSTEMD_DIR/prelogin-menu.service" << 'EOF'
+[Unit]
+Description=Menu antes do login
+After=prelogin-content.service
+Before=getty@tty1.service
+Conflicts=getty@tty1.service
+
+[Service]
+ExecStart=/usr/local/bin/prelogin-menu.sh
+StandardInput=tty
+StandardOutput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+Restart=no
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+#################################
+# Ativação correta
+#################################
+$RUN systemctl daemon-reload
+$RUN systemctl disable getty@tty1.service || true
+$RUN systemctl enable prelogin-content.service
+$RUN systemctl enable prelogin-menu.service
+
+echo "[BOOTMENU] Menu pré-login configurado com sucesso"

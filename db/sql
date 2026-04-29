@@ -1,0 +1,197 @@
+-- phpMyAdmin SQL Dump
+-- version 5.2.3
+-- https://www.phpmyadmin.net/
+--
+-- Host: mysql
+-- Tempo de geração: 26/04/2026 às 22:36
+-- Versão do servidor: 8.0.44-35
+-- Versão do PHP: 8.3.26
+
+SET SQL_MODE = "NO_AUTO_VALUE_ON_ZERO";
+START TRANSACTION;
+SET time_zone = "+00:00";
+
+
+/*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
+/*!40101 SET @OLD_CHARACTER_SET_RESULTS=@@CHARACTER_SET_RESULTS */;
+/*!40101 SET @OLD_COLLATION_CONNECTION=@@COLLATION_CONNECTION */;
+/*!40101 SET NAMES utf8mb4 */;
+
+--
+-- Banco de dados: `serve_local`
+--
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura para tabela `servidor`
+--
+
+CREATE TABLE `servidor` (
+  `id` int UNSIGNED NOT NULL,
+  `id_user` int DEFAULT NULL,
+  `nome_server` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `AccountTag` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `TunnelSecret` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `TunnelID` varchar(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `Endpoint` varchar(255) DEFAULT NULL,
+  `login` varchar(100) DEFAULT NULL,
+  `senha` varchar(100) DEFAULT NULL,
+  `ativo` int DEFAULT '-1',
+  `loginuserserve` varchar(100) DEFAULT NULL,
+  `senhauserserve` varchar(100) DEFAULT NULL,
+  `dadosserver` text
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+---------------------------------------------------
+
+--
+-- Estrutura stand-in para view `servidor_usuario`
+-- (Veja abaixo para a visão atual)
+--
+CREATE TABLE `servidor_usuario` (
+`AccountTag` varchar(64)
+,`ativo` int
+,`dadosserver` text
+,`email` varchar(50)
+,`Endpoint` varchar(255)
+,`id_server` int unsigned
+,`id_usuario` int
+,`login` varchar(100)
+,`loginuserserve` varchar(100)
+,`nome` varchar(50)
+,`nome_server` varchar(50)
+,`senha` varchar(100)
+,`senhauserserve` varchar(100)
+,`telefone` varchar(50)
+,`TunnelID` varchar(64)
+,`TunnelSecret` varchar(64)
+);
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura stand-in para view `tunnel_disponivel`
+-- (Veja abaixo para a visão atual)
+--
+CREATE TABLE `tunnel_disponivel` (
+`AccountTag` varchar(64)
+,`ativo` int
+,`dadosserver` text
+,`Endpoint` varchar(255)
+,`id` int unsigned
+,`id_user` int
+,`login` varchar(100)
+,`loginuserserve` varchar(100)
+,`nome_server` varchar(50)
+,`senha` varchar(100)
+,`senhauserserve` varchar(100)
+,`TunnelID` varchar(64)
+,`TunnelSecret` varchar(64)
+);
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura stand-in para view `tunnel_disponivel_teste`
+-- (Veja abaixo para a visão atual)
+--
+CREATE TABLE `tunnel_disponivel_teste` (
+`AccountTag` varchar(64)
+,`ativo` int
+,`dadosserver` text
+,`Endpoint` varchar(255)
+,`id` int unsigned
+,`id_user` int
+,`login` varchar(100)
+,`loginuserserve` varchar(100)
+,`nome_server` varchar(50)
+,`senha` varchar(100)
+,`senhauserserve` varchar(100)
+,`TunnelID` varchar(64)
+,`TunnelSecret` varchar(64)
+);
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura para tabela `usuario`
+--
+
+CREATE TABLE `usuario` (
+  `id_us` int NOT NULL,
+  `nome` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `telefone` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL,
+  `email` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
+
+--
+-- Despejando dados para a tabela `usuario`
+----
+-- Índices para tabelas despejadas
+--
+
+--
+-- Índices de tabela `servidor`
+--
+ALTER TABLE `servidor`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `TunnelID_2` (`TunnelID`),
+  ADD UNIQUE KEY `TunnelID_4` (`TunnelID`),
+  ADD KEY `id_user` (`id_user`),
+  ADD KEY `TunnelID` (`TunnelID`),
+  ADD KEY `TunnelID_3` (`TunnelID`);
+
+--
+-- Índices de tabela `usuario`
+--
+ALTER TABLE `usuario`
+  ADD PRIMARY KEY (`id_us`);
+
+--
+-- AUTO_INCREMENT para tabelas despejadas
+--
+
+--
+-- AUTO_INCREMENT de tabela `servidor`
+--
+ALTER TABLE `servidor`
+  MODIFY `id` int UNSIGNED NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=180;
+
+--
+-- AUTO_INCREMENT de tabela `usuario`
+--
+ALTER TABLE `usuario`
+  MODIFY `id_us` int NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura para view `servidor_usuario`
+--
+DROP TABLE IF EXISTS `servidor_usuario`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`%` SQL SECURITY DEFINER VIEW `servidor_usuario`  AS SELECT `se`.`id_user` AS `id_usuario`, `us`.`nome` AS `nome`, `us`.`telefone` AS `telefone`, `us`.`email` AS `email`, `se`.`id` AS `id_server`, `se`.`nome_server` AS `nome_server`, `se`.`AccountTag` AS `AccountTag`, `se`.`TunnelSecret` AS `TunnelSecret`, `se`.`TunnelID` AS `TunnelID`, `se`.`Endpoint` AS `Endpoint`, `se`.`login` AS `login`, `se`.`senha` AS `senha`, `se`.`ativo` AS `ativo`, `se`.`loginuserserve` AS `loginuserserve`, `se`.`senhauserserve` AS `senhauserserve`, `se`.`dadosserver` AS `dadosserver` FROM (`servidor` `se` join `usuario` `us` on((`se`.`id_user` = `us`.`id_us`))) ;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura para view `tunnel_disponivel`
+--
+DROP TABLE IF EXISTS `tunnel_disponivel`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`%` SQL SECURITY DEFINER VIEW `tunnel_disponivel`  AS SELECT `servidor`.`id` AS `id`, `servidor`.`id_user` AS `id_user`, `servidor`.`nome_server` AS `nome_server`, `servidor`.`AccountTag` AS `AccountTag`, `servidor`.`TunnelSecret` AS `TunnelSecret`, `servidor`.`TunnelID` AS `TunnelID`, `servidor`.`Endpoint` AS `Endpoint`, `servidor`.`login` AS `login`, `servidor`.`senha` AS `senha`, `servidor`.`ativo` AS `ativo`, `servidor`.`loginuserserve` AS `loginuserserve`, `servidor`.`senhauserserve` AS `senhauserserve`, `servidor`.`dadosserver` AS `dadosserver` FROM `servidor` WHERE ((`servidor`.`ativo` = -(1)) AND (`servidor`.`id` >= 48) AND (`servidor`.`id_user` = 0)) ;
+
+-- --------------------------------------------------------
+
+--
+-- Estrutura para view `tunnel_disponivel_teste`
+--
+DROP TABLE IF EXISTS `tunnel_disponivel_teste`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`%` SQL SECURITY DEFINER VIEW `tunnel_disponivel_teste`  AS SELECT `servidor`.`id` AS `id`, `servidor`.`id_user` AS `id_user`, `servidor`.`nome_server` AS `nome_server`, `servidor`.`AccountTag` AS `AccountTag`, `servidor`.`TunnelSecret` AS `TunnelSecret`, `servidor`.`TunnelID` AS `TunnelID`, `servidor`.`Endpoint` AS `Endpoint`, `servidor`.`login` AS `login`, `servidor`.`senha` AS `senha`, `servidor`.`ativo` AS `ativo`, `servidor`.`loginuserserve` AS `loginuserserve`, `servidor`.`senhauserserve` AS `senhauserserve`, `servidor`.`dadosserver` AS `dadosserver` FROM `servidor` WHERE ((`servidor`.`ativo` = -(1)) AND (`servidor`.`id` < 48) AND (`servidor`.`id_user` = 0)) ;
+COMMIT;
+
+/*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
+/*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;
+/*!40101 SET COLLATION_CONNECTION=@OLD_COLLATION_CONNECTION */;

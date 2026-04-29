@@ -1,0 +1,227 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloudflare.com/client/v4/accounts/62a66b634db63e33fb0eedb792cceafc/cfd_tunnel",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer 1Wk-Ui0PIEx6I175IhJlSD-xhG9HQv33IaCDcrUx"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n          \"name\": \"x{{ $json.data.insertId }}{{ $('Code in JavaScript').item.json.numero }}\",\n          \"config_src\": \"cloudflare\"\n        }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        784,
+        576
+      ],
+      "id": "be404466-21c5-4a72-9b87-96f407381fac",
+      "name": "Criar do tunnels"
+    },
+    {
+      "parameters": {
+        "path": "dad5b129-2725-49a2-a950-44b92c4574fe",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        320,
+        576
+      ],
+      "id": "0a51685e-2f38-45ba-9fea-2b6187d42c37",
+      "name": "Webhook3",
+      "webhookId": "dad5b129-2725-49a2-a950-44b92c4574fe"
+    },
+    {
+      "parameters": {
+        "table": {
+          "__rl": true,
+          "value": "servidor",
+          "mode": "list",
+          "cachedResultName": "servidor"
+        },
+        "dataMode": "defineBelow",
+        "valuesToSend": {
+          "values": [
+            {
+              "column": "ativo",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "detailedOutput": true
+        }
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        624,
+        576
+      ],
+      "id": "30a84d23-b411-43ee-921a-6e0d32f3589a",
+      "name": "MySQL7",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "3WAQgKOeVzR7Jy8N",
+          "name": "Servve_local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE `servidor` SET `id_user` = {{ $('Code in JavaScript').item.json.numero }}, `AccountTag` = '{{ $json.result.credentials_file.AccountTag }}', `TunnelSecret` = '{{ $json.result.credentials_file.TunnelSecret }}', `TunnelID` = '{{ $json.result.credentials_file.TunnelID }}', `Endpoint` = '{{ $json.result.token }}' WHERE `servidor`.`id` = {{ $('MySQL7').item.json.data.insertId }}",
+        "options": {
+          "detailedOutput": true
+        }
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        944,
+        576
+      ],
+      "id": "ac959202-e279-4ef9-a016-22f82834fee0",
+      "name": "MySQL8",
+      "alwaysOutputData": true,
+      "credentials": {
+        "mySql": {
+          "id": "3WAQgKOeVzR7Jy8N",
+          "name": "Servve_local"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const numero = Math.floor(Math.random() * (999 - 100 + 1)) + 100;\n\nreturn [\n  {\n    json: {\n      numero\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        576
+      ],
+      "id": "65869b86-6fec-43a9-adff-0cb4baaff3df",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "=#!/bin/bash\nset -e\nexport DEBIAN_FRONTEND=noninteractive\n\nROOT=\"/\"\n\nSERVER_CODE=$'{{ $('Criar do tunnels').item.json.result.credentials_file.TunnelName }}\\nEntre em contato com o suporte no endereço: https://souweverton.com.br/contato'\n\necho \"Codigo do Servidor: $SERVER_CODE\" | tee /etc/issue > /dev/null\necho \"Codigo do Servidor: $SERVER_CODE\" | tee /etc/motd > /dev/null\n\n# Define variáveis fixas\nAccountTag=\"{{ $('Criar do tunnels').item.json.result.credentials_file.AccountTag }}\"\nTunnelSecret=\"{{ $('Criar do tunnels').item.json.result.credentials_file.TunnelSecret }}\"\nTunnelID=\"{{ $('Criar do tunnels').item.json.result.credentials_file.TunnelID }}\"\nEndpoint=\"\"\n\napt update || true\napt install -y --no-install-recommends nano openssh-server jq curl || true\n\nmkdir -p /etc/cloudflared\n\ntee /etc/cloudflared/${TunnelID}.json > /dev/null <<EOF\n{\n  \"AccountTag\": \"$AccountTag\",\n  \"TunnelSecret\": \"$TunnelSecret\",\n  \"TunnelID\": \"$TunnelID\"\n}\nEOF\n\ntee /etc/cloudflared/config.yml > /dev/null <<EOF\ntunnel: ${TunnelID}\ncredentials-file: /etc/cloudflared/${TunnelID}.json\nmetrics: 127.0.0.1:45678\nEOF\n\ncloudflared service install\nsystemctl enable cloudflared\nsystemctl restart cloudflared\n\nclear\necho \"Instalação concluída com sucesso! em 10 segundos sera reiniciado a Maquina.\"\necho\necho\n# Aguardar 10 segundos\nsleep 10\n# Reiniciar o sistema\nreboot",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1104,
+        576
+      ],
+      "id": "f34ec1ee-c6e3-4c98-bc07-ce445e4200c9",
+      "name": "Respond to Webhook8"
+    }
+  ],
+  "connections": {
+    "Criar do tunnels": {
+      "main": [
+        [
+          {
+            "node": "MySQL8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook3": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MySQL7": {
+      "main": [
+        [
+          {
+            "node": "Criar do tunnels",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MySQL8": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook8",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "MySQL7",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Webhook3": [
+      {
+        "headers": {
+          "host": "web12.souweverton.com.br",
+          "user-agent": "curl/7.81.0",
+          "content-length": "0",
+          "accept": "*/*",
+          "accept-encoding": "gzip, br",
+          "cdn-loop": "cloudflare; loops=1",
+          "cf-connecting-ip": "200.189.28.13",
+          "cf-ipcountry": "BR",
+          "cf-ray": "9bfeb1dd6a17721c-GRU",
+          "cf-visitor": "{\"scheme\":\"https\"}",
+          "cf-warp-tag-id": "8c7094b5-dc11-4268-b1f0-7d729aa3319c",
+          "x-forwarded-for": "172.18.0.1",
+          "x-forwarded-host": "web12.souweverton.com.br",
+          "x-forwarded-port": "443",
+          "x-forwarded-proto": "https",
+          "x-forwarded-server": "db1b68e6c169",
+          "x-real-ip": "172.18.0.1"
+        },
+        "params": {},
+        "query": {},
+        "body": {},
+        "webhookUrl": "https://web12.souweverton.com.br/webhook/dad5b129-2725-49a2-a950-44b92c4574fe",
+        "executionMode": "production"
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "6a5f5c1d6e9df32623085a134ce511ae6b896761912194c5e9c120d274f31813"
+  }
+}

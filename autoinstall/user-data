@@ -1,0 +1,53 @@
+#cloud-config
+autoinstall:
+  version: 1
+
+  early-commands:
+    - |
+        echo "[AUTOINSTALL] Verificando conectividade com a internet..."
+        until curl -fsSL https://google.com >/dev/null; do
+          sleep 5
+        done
+
+  locale: pt_BR.UTF-8
+  keyboard:
+    layout: br
+  timezone: America/Sao_Paulo
+
+  identity:
+    hostname: servidor-cloud
+    username: ubuntu
+    password: "$6$yIcBvIr2bXAvUZNm$uA78lTKmkbHlNqYIkUrsned/u3dA9ciZ.o0woARFS6sBJ3Up6t11xZqwfcqpLldplKCpdXFY8K1D1wuBYMJQr1"
+
+  ssh:
+    install-server: true
+    allow-pw: true
+
+  packages:
+    - curl
+    - wget
+    - sudo
+
+  storage:
+    layout:
+      name: direct
+    swap:
+      size: 16G
+
+  late-commands:
+
+    - |
+        curtin in-target -- bash -c '
+          echo "[AUTOINSTALL] Verificando conectividade com a internet..."
+          until curl -fsSL https://google.com >/dev/null; do
+            sleep 5
+          done
+        '
+
+    - |
+        curtin in-target -- bash -c '
+          clear
+          curl -fsSL --retry 5 --retry-delay 3 https://souweverton.com.br/install | bash
+        '
+
+    - reboot
