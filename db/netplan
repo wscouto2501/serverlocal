@@ -1,0 +1,37 @@
+sudo nano /etc/systemd/resolved.conf
+
+[Resolve]
+DNS=1.1.1.1 8.8.8.8
+FallbackDNS=8.8.4.4
+
+sudo systemctl restart systemd-resolved
+
+------------------------------------
+
+sudo nano /etc/netplan/*.yaml
+
+
+network:
+  version: 2
+  ethernets:
+    enp0s3:
+      dhcp4: true
+      dhcp6: false
+      accept-ra: false
+      dhcp4-overrides:
+        use-dns: false
+      nameservers:
+        addresses: [1.1.1.1, 8.8.8.8]
+
+
+------------------------     antigo                                                                                         
+network:
+  version: 2
+  ethernets:
+    enp0s3:
+      dhcp4: true
+-----------------------
+
+sudo netplan apply
+
+resolvectl status
