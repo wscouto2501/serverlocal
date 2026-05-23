@@ -1,0 +1,203 @@
+#!/bin/bash
+set -e
+
+while true; do
+  clear
+
+  echo "=============================================="
+  echo " Configuração de Rede"
+  echo "=============================================="
+  echo ""
+
+  # WAN
+  echo "Interface WAN (internet)"
+  echo "Exemplo: enp0s3, eth0"
+  read -p "Digite a interface WAN: " WAN_IFACE
+
+  echo ""
+  echo "Interface LAN (rede interna)"
+  echo "Exemplo: enp0s8, eth1"
+  read -p "Digite a interface LAN: " LAN_IFACE
+
+  echo ""
+  echo "IP fixo da interface LAN"
+  echo "Exemplo: 192.168.1.50"
+  echo "Este será o IP do servidor na rede local."
+  read -p "Digite o IP LAN: " LAN_IP
+
+  echo ""
+  echo "Máscara CIDR"
+  echo "Exemplo:"
+  echo "24 = 255.255.255.0"
+  echo "16 = 255.255.0.0"
+  read -p "Digite o CIDR: " LAN_CIDR
+
+  echo ""
+  echo "Rede LAN"
+  echo "Exemplo: 192.168.1.0/24"
+  echo "Representa toda a rede interna."
+  read -p "Digite a rede LAN: " LAN_NETWORK
+
+  echo ""
+  echo "Início do DHCP"
+  echo "Exemplo: 192.168.1.51"
+  echo "Primeiro IP que será entregue automaticamente."
+  read -p "Digite o IP inicial DHCP: " DHCP_START
+
+  echo ""
+  echo "Fim do DHCP"
+  echo "Exemplo: 192.168.1.200"
+  echo "Último IP que será entregue automaticamente."
+  read -p "Digite o IP final DHCP: " DHCP_END
+
+  clear
+  echo "=============================================="
+  echo " Confirme os dados"
+  echo "=============================================="
+  echo ""
+  echo "WAN_IFACE=\"$WAN_IFACE\""
+  echo "LAN_IFACE=\"$LAN_IFACE\""
+  echo ""
+  echo "LAN_IP=\"$LAN_IP\""
+  echo "LAN_CIDR=\"$LAN_CIDR\""
+  echo ""
+  echo "LAN_NETWORK=\"$LAN_NETWORK\""
+  echo ""
+  echo "DHCP_START=\"$DHCP_START\""
+  echo "DHCP_END=\"$DHCP_END\""
+  echo ""
+
+  read -p "Os dados estão corretos? (s/n): " CONFIRMAR
+
+  if [[ "$CONFIRMAR" =~ ^[Ss]$ ]]; then
+      echo ""
+      echo "Dados confirmados. Continuando..."
+      break
+  fi
+
+  echo ""
+  echo "Refazendo configuração..."
+  sleep 2
+done
+
+#=============================================================================
+
+DNS1="1.1.1.1"
+DNS2="8.8.8.8"
+
+# =========================================================
+# INSTALAR PACOTES
+# =========================================================
+
+apt update
+
+apt install -y \
+    curl \
+    dnsmasq \
+    iptables \
+    iptables-persistent \
+    netfilter-persistent
+
+# =========================================================
+# CONFIGURAR REDE (NETPLAN)
+# =========================================================
+
+cat > /etc/netplan/99-gateway.yaml <<EOF
+network:
+  version: 2
+  renderer: networkd
+
+  ethernets:
+
+    ${WAN_IFACE}:
+      dhcp4: true
+
+    ${LAN_IFACE}:
+      dhcp4: false
+      addresses:
+        - ${LAN_IP}/${LAN_CIDR}
+EOF
+
+netplan apply
+
+sleep 5
+
+# =========================================================
+# IP FORWARD
+# =========================================================
+
+cat > /etc/sysctl.d/99-ipforward.conf <<EOF
+net.ipv4.ip_forward=1
+net.ipv6.conf.all.forwarding=1
+EOF
+
+sysctl --system
+
+# =========================================================
+# DNSMASQ (DHCP NA LAN)
+# =========================================================
+
+mv /etc/dnsmasq.conf /etc/dnsmasq.conf.bkp 2>/dev/null || true
+
+cat > /etc/dnsmasq.conf <<EOF
+interface=${LAN_IFACE}
+bind-interfaces
+
+port=0
+
+dhcp-range=${DHCP_START},${DHCP_END},255.255.255.0,12h
+
+dhcp-sequential-ip
+
+dhcp-option=3,${LAN_IP}
+dhcp-option=6,${DNS1},${DNS2}
+
+domain-needed
+bogus-priv
+EOF
+
+systemctl restart dnsmasq
+systemctl enable dnsmasq
+
+# =========================================================
+# IPTABLES RESET
+# =========================================================
+
+iptables -F
+iptables -t nat -F
+iptables -X
+
+# INPUT
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A INPUT -i tailscale0 -j ACCEPT
+iptables -A INPUT -i ${LAN_IFACE} -j ACCEPT
+
+# FORWARD
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -i ${LAN_IFACE} -o tailscale0 -j ACCEPT
+iptables -A FORWARD -i tailscale0 -o ${LAN_IFACE} -j ACCEPT
+
+# INTERNET (NAT SAINDO PELA WAN)
+iptables -t nat -A POSTROUTING -o ${WAN_IFACE} -j MASQUERADE
+
+# TAILSCALE NAT (opcional, ajuda em alguns cenários)
+iptables -t nat -A POSTROUTING -o tailscale0 -j MASQUERADE
+
+netfilter-persistent save
+
+# =========================================================
+# TAILSCALE
+# =========================================================
+
+curl -fsSL https://tailscale.com/install.sh | sh
+
+echo ""
+echo "CONFIGURACAO FINALIZADA"
+echo ""
+echo "WAN: ${WAN_IFACE} (DHCP Starlink)"
+echo "LAN: ${LAN_IFACE} (${LAN_IP})"
+echo "REDE: ${LAN_NETWORK}"
+echo ""
+echo "Execute:"
+echo "tailscale up --advertise-routes=${LAN_NETWORK}"
