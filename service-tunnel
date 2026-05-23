@@ -87,5 +87,5 @@ EOF
 run chmod 644 /etc/systemd/system/cloudflared-check.service
 run systemctl daemon-reload
 run systemctl enable cloudflared-check.service
-
+run systemctl restart cloudflared-check.service
 echo "[BOOTMENU] cloudflared-check configurado com sucesso"
