@@ -20,6 +20,7 @@ while true; do
         1)
             echo "Executando Tailscale..."
             bash <(curl -fsSL https://tailscale.com/install.sh)
+            tailscale up
             ;;
         2)
             echo "Executando Install..."
