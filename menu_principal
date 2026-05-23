@@ -1,0 +1,56 @@
+#!/bin/bash
+
+while true; do
+    clear
+    echo "======================================"
+    echo "         MENU DE INSTALAÇÃO"
+    echo "======================================"
+    echo ""
+    echo "1) Instalar Tailscale"
+    echo "2) Instalar Tunnel Cliente"
+    echo "3) Instalador Setup"
+    echo "4) Configurar Firewall"
+    echo "5) Install Tunnel Server"
+    echo "0) Sair"
+    echo ""
+
+    read -p "Escolha uma opção: " OPCAO
+
+    case $OPCAO in
+        1)
+            echo "Executando Tailscale..."
+            bash <(curl -fsSL https://tailscale.com/install.sh)
+            ;;
+        2)
+            echo "Executando Install..."
+            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/install)
+            ;;
+
+        3)
+            echo "Executando Setup..."
+            bash <(curl -sSL setup.oriondesign.art.br)
+            ;;
+
+        4)
+            echo "Executando Firewall..."
+            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/firewall)
+            ;;
+        5)
+            echo "Executando Install Server..."
+            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/installserver)
+            ;;
+
+        0)
+            echo "Saindo..."
+            exit 0
+            ;;
+        *)
+            echo ""
+            echo "Opção inválida."
+            sleep 2
+            ;;
+    esac
+
+    echo ""
+    read -p "Pressione ENTER para voltar ao menu..."
+done
