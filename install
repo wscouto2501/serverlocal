@@ -2,6 +2,4 @@
 curl -fsSL --retry 5 --retry-delay 3 https://raw.githubusercontent.com/wscouto2501/serverlocal/main/bootmenu | bash || true
 curl -fsSL --retry 5 --retry-delay 3 https://raw.githubusercontent.com/wscouto2501/serverlocal/main/service-tunnel | bash || true
 clear
-echo "configuração concluida, reiniciando em 5 segundos"
-sleep 5
-reboot
+echo "configuração concluida."
