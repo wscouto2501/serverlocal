@@ -12,6 +12,12 @@ while true; do
     echo "3) Instalador Setup"
     echo "4) Configurar Firewall"
     echo "5) Install Tunnel Server"
+    echo "======================================"
+    echo "6) Status do Servidor"
+    echo "7) Reiniciar"
+    echo "8) Desligar"
+    echo "9) Atualizar o Servidor"
+    echo "======================================"
     echo "0) Sair"
     echo ""
 
@@ -42,6 +48,33 @@ while true; do
             bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/installserver)
             ;;
 
+        6)
+           while true; do
+             clear
+             uptime
+             echo
+             free -h
+             echo
+             df -h -x overlay -x tmpfs
+             echo
+             echo "Enter para voltar"
+             read -t 1 key && break
+           done
+           ;;
+        7)
+          echo "Reiniciando, aguarde..."
+          systemctl reboot
+          exit 0
+          ;;
+        8)
+          echo "Desligando, aguarde..."
+          systemctl poweroff
+          exit 0
+          ;;
+        9)
+          apt update && apt upgrade -y
+          read -p "Sistema atualizado, precione ENTER para voltar..."
+          ;;
         0)
             clear
             echo "Saindo..."
