@@ -7,18 +7,19 @@ while true; do
     echo "         MENU DE INSTALAÇÃO"
     echo "======================================"
     echo ""
-    echo "1) Instalar Tailscale"
-    echo "2) Instalar Tunnel Cliente"
-    echo "3) Instalador Setup"
-    echo "4) Configurar Firewall"
-    echo "5) Install Tunnel Server"
+    echo " 1) Instalar Tailscale"
+    echo " 2) Instalar Tunnel Cliente"
+    echo " 3) Instalador Setup"
+    echo " 4) Configurar Firewall"
+    echo " 5) Install Tunnel Server"
     echo "======================================"
-    echo "6) Status do Servidor"
-    echo "7) Reiniciar"
-    echo "8) Desligar"
-    echo "9) Atualizar o Servidor"
+    echo " 6) Status do Servidor"
+    echo " 7) Reiniciar"
+    echo " 8) Desligar"
+    echo " 9) Atualizar o Servidor"
+    echo "10) Configurar DHCP"
     echo "======================================"
-    echo "0) Sair"
+    echo " 0) Sair"
     echo ""
 
     read -p "Escolha uma opção: " OPCAO
@@ -75,6 +76,10 @@ while true; do
           apt update && apt upgrade -y
           read -p "Sistema atualizado, precione ENTER para voltar..."
           ;;
+        10)
+           echo "Executando Install DHCP..."
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/dhcp)
+           ;;
         0)
             clear
             echo "Saindo..."
@@ -85,7 +90,6 @@ while true; do
             echo "Opção inválida."
             ;;
     esac
-
     echo ""
     read -p "Pressione ENTER para voltar ao menu..."
 done
