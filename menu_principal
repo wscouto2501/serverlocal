@@ -3,7 +3,6 @@
 while true; do
     clear
     [ -f /etc/issue ] && cat /etc/issue && echo
-    echo 
     echo "======================================"
     echo "         MENU DE INSTALAÇÃO"
     echo "======================================"
