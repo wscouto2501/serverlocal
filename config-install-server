@@ -81,7 +81,5 @@ systemctl restart cloudflared
 
 # Mensagem final e reboot
 clear
-echo "Instalação concluída com sucesso! Em 10 segundos a máquina será reiniciada."
+echo "Instalação concluída com sucesso!"
 echo
-sleep 10
-reboot
