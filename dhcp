@@ -199,5 +199,4 @@ echo "WAN: ${WAN_IFACE} (DHCP Starlink)"
 echo "LAN: ${LAN_IFACE} (${LAN_IP})"
 echo "REDE: ${LAN_NETWORK}"
 echo ""
-echo "Execute:"
-echo "tailscale up --advertise-routes=${LAN_NETWORK}"
+tailscale up --advertise-routes=${LAN_NETWORK}
