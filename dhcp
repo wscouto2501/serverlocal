@@ -131,13 +131,11 @@ while true; do
   fi
 
 
-
-
-
-
-
-
-
+  if [ "$DHCP_START" = "$LAN_IP" ] || [ "$DHCP_END" = "$LAN_IP" ]; then
+      echo "DHCP não pode usar o IP do servidor"
+      sleep 2
+      continue
+  fi
 
   clear
   echo "=============================================="
