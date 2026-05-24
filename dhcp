@@ -134,6 +134,37 @@ EOF
 sysctl --system
 
 # =========================================================
+# CONVERTER CIDR -> MÁSCARA
+# =========================================================
+
+CIDR_TO_MASK() {
+    local i mask="" full_octets=$(( $1 / 8 )) partial_octet=$(( $1 % 8 ))
+
+    for i in {0..3}; do
+        if [ $i -lt $full_octets ]; then
+            octet=255
+        elif [ $i -eq $full_octets ]; then
+            octet=$((256 - 2**(8-partial_octet)))
+            [ $partial_octet -eq 0 ] && octet=0
+        else
+            octet=0
+        fi
+
+        mask+=$octet
+        [ $i -lt 3 ] && mask+="."
+    done
+
+    echo "$mask"
+}
+
+NETMASK=$(CIDR_TO_MASK "$LAN_CIDR")
+
+
+
+
+
+
+# =========================================================
 # DNSMASQ (DHCP NA LAN)
 # =========================================================
 
@@ -145,7 +176,7 @@ bind-interfaces
 
 port=0
 
-dhcp-range=${DHCP_START},${DHCP_END},255.255.255.0,12h
+dhcp-range=${DHCP_START},${DHCP_END},${NETMASK},12h
 
 dhcp-sequential-ip
 
@@ -175,6 +206,7 @@ iptables -A INPUT -i ${LAN_IFACE} -j ACCEPT
 
 # FORWARD
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+iptables -A FORWARD -i ${LAN_IFACE} -o ${WAN_IFACE} -j ACCEPT
 iptables -A FORWARD -i ${LAN_IFACE} -o tailscale0 -j ACCEPT
 iptables -A FORWARD -i tailscale0 -o ${LAN_IFACE} -j ACCEPT
 
