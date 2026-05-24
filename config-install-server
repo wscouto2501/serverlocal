@@ -10,7 +10,10 @@ while true; do
   echo "(a digitação ficará oculta)"
   read -s -p "Token: " CLOUDFLARE_API_TOKEN </dev/tty
   echo
-  TUNNEL_NAME="server_$(tr -dc 'a-z' </dev/urandom | head -c 8)"
+  read -p "Informe o nome do servidor (deixe vazio para gerar automaticamente): " TUNNEL_NAME </dev/tty
+  # Se estiver vazio, gera automaticamente
+  TUNNEL_NAME=${TUNNEL_NAME:-"server_$(tr -dc 'a-z' </dev/urandom | head -c 8)"}
+  echo "Nome do servidor: $TUNNEL_NAME"
   RESPONSE=$(curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/cfd_tunnel" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
