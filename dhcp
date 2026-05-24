@@ -1,6 +1,25 @@
 #!/bin/bash
 set -e
 
+if [ "$EUID" -ne 0 ]; then
+    echo "Execute como root"
+    exit 1
+fi
+
+# =========================================================
+# INSTALAR PACOTES
+# =========================================================
+
+apt update
+
+apt install -y \
+    curl \
+    dnsmasq \
+    iptables \
+    iptables-persistent \
+    netfilter-persistent \
+    ipcalc
+
 while true; do
   clear
 
@@ -14,10 +33,29 @@ while true; do
   echo "Exemplo: enp0s3, eth0"
   read -p "Digite a interface WAN: " WAN_IFACE
 
+  ip link show "$WAN_IFACE" >/dev/null 2>&1 || {
+      echo "Interface WAN inválida"
+      sleep 2
+      continue
+  }
+  
   echo ""
   echo "Interface LAN (rede interna)"
   echo "Exemplo: enp0s8, eth1"
   read -p "Digite a interface LAN: " LAN_IFACE
+
+  ip link show "$LAN_IFACE" >/dev/null 2>&1 || {
+      echo "Interface LAN inválida"
+      sleep 2
+      continue
+  }
+
+  if [ "$WAN_IFACE" = "$LAN_IFACE" ]; then
+      echo ""
+      echo "WAN e LAN não podem ser a mesma interface"
+      sleep 2
+      continue
+  fi
 
   echo ""
   echo "IP fixo da interface LAN"
@@ -32,11 +70,24 @@ while true; do
   echo "16 = 255.255.0.0"
   read -p "Digite o CIDR: " LAN_CIDR
 
+  ipcalc -c "${LAN_IP}/${LAN_CIDR}" >/dev/null 2>&1 || {
+      echo "IP/CIDR inválido"
+      sleep 2
+      continue
+  }
+
   echo ""
   echo "Rede LAN"
   echo "Exemplo: 192.168.1.0/24"
   echo "Representa toda a rede interna."
   read -p "Digite a rede LAN: " LAN_NETWORK
+  
+  ipcalc -c "$LAN_NETWORK" >/dev/null 2>&1 || {
+      echo "Rede LAN inválida"
+      sleep 2
+      continue
+  }
+
 
   echo ""
   echo "Início do DHCP"
@@ -44,11 +95,49 @@ while true; do
   echo "Primeiro IP que será entregue automaticamente."
   read -p "Digite o IP inicial DHCP: " DHCP_START
 
+  ipcalc -c "$DHCP_START" >/dev/null 2>&1 || {
+      echo "IP inicial DHCP inválido"
+      sleep 2
+      continue
+  }
+
   echo ""
   echo "Fim do DHCP"
   echo "Exemplo: 192.168.1.200"
   echo "Último IP que será entregue automaticamente."
   read -p "Digite o IP final DHCP: " DHCP_END
+  
+  ipcalc -c "$DHCP_END" >/dev/null 2>&1 || {
+      echo "IP final DHCP inválido"
+      sleep 2
+      continue
+  }
+
+  NETWORK_PREFIX=$(ipcalc -n "${LAN_IP}/${LAN_CIDR}" | awk -F= '/NETWORK/{print $2}')
+  
+  START_PREFIX=$(ipcalc -n "${DHCP_START}/${LAN_CIDR}" | awk -F= '/NETWORK/{print $2}')
+  END_PREFIX=$(ipcalc -n "${DHCP_END}/${LAN_CIDR}" | awk -F= '/NETWORK/{print $2}')
+  
+  if [ "$NETWORK_PREFIX" != "$START_PREFIX" ]; then
+      echo "DHCP inicial fora da rede LAN"
+      sleep 2
+      continue
+  fi
+  
+  if [ "$NETWORK_PREFIX" != "$END_PREFIX" ]; then
+      echo "DHCP final fora da rede LAN"
+      sleep 2
+      continue
+  fi
+
+
+
+
+
+
+
+
+
 
   clear
   echo "=============================================="
@@ -70,6 +159,7 @@ while true; do
   read -p "Os dados estão corretos? (s/n): " CONFIRMAR
 
   if [[ "$CONFIRMAR" =~ ^[Ss]$ ]]; then
+
       echo ""
       echo "Dados confirmados. Continuando..."
       break
@@ -86,21 +176,10 @@ DNS1="1.1.1.1"
 DNS2="8.8.8.8"
 
 # =========================================================
-# INSTALAR PACOTES
-# =========================================================
-
-apt update
-
-apt install -y \
-    curl \
-    dnsmasq \
-    iptables \
-    iptables-persistent \
-    netfilter-persistent
-
-# =========================================================
 # CONFIGURAR REDE (NETPLAN)
 # =========================================================
+[ ! -d /etc/netplan.backup ] && \
+cp -a /etc/netplan /etc/netplan.backup
 
 cat > /etc/netplan/99-gateway.yaml <<EOF
 network:
@@ -118,9 +197,8 @@ network:
         - ${LAN_IP}/${LAN_CIDR}
 EOF
 
-netplan apply
-
-sleep 5
+netplan generate
+netplan try --timeout 15
 
 # =========================================================
 # IP FORWARD
@@ -128,7 +206,8 @@ sleep 5
 
 cat > /etc/sysctl.d/99-ipforward.conf <<EOF
 net.ipv4.ip_forward=1
-net.ipv6.conf.all.forwarding=1
+net.ipv6.conf.all.disable_ipv6=1
+net.ipv6.conf.default.disable_ipv6=1
 EOF
 
 sysctl --system
@@ -196,13 +275,46 @@ systemctl enable dnsmasq
 
 iptables -F
 iptables -t nat -F
+iptables -t mangle -F
+iptables -t raw -F
 iptables -X
 
+iptables -P INPUT DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT ACCEPT
+
 # INPUT
+
+# loopback
 iptables -A INPUT -i lo -j ACCEPT
+
+# conexões existentes
 iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
+# DHCP
+iptables -A INPUT -i ${LAN_IFACE} -p udp --dport 67:68 -j ACCEPT
+
+# DNS dnsmasq (se ativar DNS depois)
+#iptables -A INPUT -i ${LAN_IFACE} -p udp --dport 53 -j ACCEPT
+#iptables -A INPUT -i ${LAN_IFACE} -p tcp --dport 53 -j ACCEPT
+
+# ICMP local
+iptables -A INPUT -i ${LAN_IFACE} -p icmp -j ACCEPT
+
+# Tailscale
 iptables -A INPUT -i tailscale0 -j ACCEPT
-iptables -A INPUT -i ${LAN_IFACE} -j ACCEPT
+
+
+
+
+
+
+
+
+
+
+
+
 
 # FORWARD
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
@@ -214,9 +326,9 @@ iptables -A FORWARD -i tailscale0 -o ${LAN_IFACE} -j ACCEPT
 iptables -t nat -A POSTROUTING -o ${WAN_IFACE} -j MASQUERADE
 
 # TAILSCALE NAT (opcional, ajuda em alguns cenários)
-iptables -t nat -A POSTROUTING -o tailscale0 -j MASQUERADE
+#iptables -t nat -A POSTROUTING -o tailscale0 -j MASQUERADE
 
-netfilter-persistent save
+
 
 # =========================================================
 # TAILSCALE
@@ -232,3 +344,5 @@ echo "LAN: ${LAN_IFACE} (${LAN_IP})"
 echo "REDE: ${LAN_NETWORK}"
 echo ""
 tailscale up --advertise-routes=${LAN_NETWORK}
+
+netfilter-persistent save
