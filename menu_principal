@@ -8,20 +8,19 @@ while true; do
     echo "======================================"
     echo ""
     echo " 1) Instalar Tailscale"
-    echo " 2) Instalar Tunnel Cliente"
+    echo " 2) Install Tunnel Server"
     echo " 3) Instalador Setup"
     echo " 4) Configurar Firewall"
-    echo " 5) Install Tunnel Server"
     echo "======================================"
-    echo " 6) Status do Servidor"
-    echo " 7) Reiniciar"
-    echo " 8) Desligar"
-    echo " 9) Atualizar o Servidor"
+    echo " 5) Status do Servidor"
+    echo " 6) Reiniciar"
+    echo " 7) Desligar"
+    echo " 8) Atualizar o Servidor"
     echo "======================================"
-    echo "10) Configurar DHCP"
+    echo " 9) Configurar DHCP"
     echo "======================================"
-    echo "11) Instalar Php + Mysql"
-    echo "12) Configurar Lavarel"
+    echo "10) Instalar Php + Mysql"
+    echo "11) Configurar Lavarel"
     echo "======================================"
     echo " 0) Sair"
     echo ""
@@ -35,10 +34,9 @@ while true; do
             tailscale up
             ;;
         2)
-            echo "Executando Install..."
-            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/install)
+            echo "Executando Install Server..."
+            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/installserver)
             ;;
-
         3)
             echo "Executando Setup..."
             bash <(curl -sSL setup.oriondesign.art.br)
@@ -48,12 +46,9 @@ while true; do
             echo "Executando Firewall..."
             bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/firewall)
             ;;
-        5)
-            echo "Executando Install Server..."
-            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/installserver)
-            ;;
 
-        6)
+
+        5)
            while true; do
              clear
              uptime
@@ -66,25 +61,25 @@ while true; do
              read -t 1 key && break
            done
            ;;
-        7)
+        6)
           echo "Reiniciando, aguarde..."
           systemctl reboot
           exit 0
           ;;
-        8)
+        7)
           echo "Desligando, aguarde..."
           systemctl poweroff
           exit 0
           ;;
-        9)
+        8)
           apt update && apt upgrade -y
           read -p "Sistema atualizado, precione ENTER para voltar..."
           ;;
-        10)
+        9)
            echo "Executando Install DHCP..."
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/dhcp)
            ;;
-        11)
+        10)
             if command -v docker &> /dev/null
             then
                 echo "Docker encontrado. Executando Install PHP + MySQL..."
@@ -94,7 +89,7 @@ while true; do
                 exit 1
             fi
             ;;
-        12)
+        11)
            echo "Executando configuração Lavarel."
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/laravel)
            ;;
