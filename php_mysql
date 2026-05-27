@@ -10,7 +10,7 @@ echo
 
 while true; do
     read -p "Nome do Site (ex: phpbet): " SITE_ID
-    ROOT_PATH="/root/php_data"
+    ROOT_PATH="/var/www"
     APP_PATH="$ROOT_PATH/sites/$SITE_ID"
     
 
