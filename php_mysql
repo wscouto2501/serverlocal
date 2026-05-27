@@ -258,5 +258,9 @@ else
     exit 1
 fi
 
+sudo chown -R www-data:www-data $APP_PATH   
+sudo find $APP_PATH -type d -exec chmod 755 {} \;
+sudo find $APP_PATH -type f -exec chmod 644 {} \;
+
 echo "arquivos armazenado no endereço: $APP_PATH"
 echo "arquivos de configurações $ROOT_PATH/nginx"
