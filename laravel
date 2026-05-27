@@ -26,8 +26,6 @@ echo "✅ Permissões ajustadas"
 
 cd "$APP_PATH"
 
-
-
-php artisan optimize:clear || true
+php artisan optimize:clear > /dev/null 2>&1 || true
 
 echo "🚀 Finalizado"
