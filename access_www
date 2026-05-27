@@ -1,0 +1,21 @@
+#!/bin/bash
+
+read -p "Caminho do wp-content (ex: /var/www/sites/b/public/wp-content): " WP_PATH
+
+if [ ! -d "$WP_PATH" ]; then
+    echo "Diretório não encontrado: $WP_PATH"
+    exit 1
+fi
+
+echo "Aplicando permissões..."
+
+sudo chown -R www-data:www-data "$WP_PATH"
+
+sudo find "$WP_PATH" -type d -exec chmod 755 {} \;
+sudo find "$WP_PATH" -type f -exec chmod 644 {} \;
+
+sudo chmod -R 775 "$WP_PATH"
+
+echo
+echo "Permissões atualizadas:"
+echo "$WP_PATH"
