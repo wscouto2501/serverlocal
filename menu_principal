@@ -93,7 +93,7 @@ while true; do
             fi
             ;;
         12)
-           echo "Executando Install DHCP..."
+           echo "Executando configuração Lavarel."
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/laravel)
            ;;
         0)
