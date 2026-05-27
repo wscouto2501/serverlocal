@@ -10,8 +10,9 @@ echo
 
 while true; do
     read -p "Nome do Site (ex: phpbet): " SITE_ID
-
-    APP_PATH="/var/www/sites/$SITE_ID"
+    ROOT_PATH="/root/php_data"
+    APP_PATH="$ROOT_PATH/sites/$SITE_ID"
+    
 
     if [ -d "$APP_PATH" ]; then
         echo "====================================="
@@ -60,12 +61,12 @@ NETWORK=$(grep "Rede interna:" "$VPS_FILE" | cut -d':' -f2 | xargs)
 # =========================
 
 mkdir -p "$APP_PATH/public"
-mkdir -p "/root/php_data/nginx"
+mkdir -p "$ROOT_PATH/nginx"
 
 # =========================
 # NGINX CONFIG (FIX PHP)
 # =========================
-cat > "/root/php_data/nginx/$SITE_ID.conf" <<EOF
+cat > "$ROOT_PATH/nginx/$SITE_ID.conf" <<EOF
 server {
     listen 80;
     server_name $DOMAIN;
@@ -106,7 +107,7 @@ services:
 
     volumes:
       - $APP_PATH:/var/www/html
-      - /root/php_data/nginx/$SITE_ID.conf:/etc/nginx/conf.d/$SITE_ID.conf
+      - $ROOT_PATH/nginx/$SITE_ID.conf:/etc/nginx/conf.d/$SITE_ID.conf
 
     networks:
       - $NETWORK
@@ -258,4 +259,4 @@ else
 fi
 
 echo "arquivos armazenado no endereço: $APP_PATH"
-echo "arquivos de configurações /root/php_data"
+echo "arquivos de configurações $ROOT_PATH/nginx"
