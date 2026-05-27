@@ -3,7 +3,7 @@ echo "====================================="
 echo "CONFIGURADOR Lavarel"
 echo "====================================="
 echo
-read -p "Endereço para atualizar ex: /php_data/sites/phpbet => " APP_PATH
+read -p "Endereço para atualizar ex: /root/php_data/sites/phpbet => " APP_PATH
 
 echo "🔧 Ajustando Laravel: $APP_PATH"
 
