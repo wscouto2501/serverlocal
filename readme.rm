@@ -1,1 +1,0 @@
-docker exec -i 00fddfaf989f mysql -uroot -p5d6f5b44c7bf13e673480f81e50748ab phpbet < 1954.sql
