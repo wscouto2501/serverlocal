@@ -1,0 +1,28 @@
+clear
+echo "====================================="
+echo "CONFIGURADOR Lavarel"
+echo "====================================="
+echo
+read -p "Endereço para atualizar: " APP_PATH
+
+echo "🔧 Ajustando Laravel: $APP_PATH"
+
+# Dono apenas para diretórios que precisam escrita
+chown -R www-data:www-data "$APP_PATH/storage"
+chown -R www-data:www-data "$APP_PATH/bootstrap/cache"
+
+# Diretórios
+find "$APP_PATH/storage" -type d -exec chmod 775 {} \;
+find "$APP_PATH/bootstrap/cache" -type d -exec chmod 775 {} \;
+
+# Arquivos
+find "$APP_PATH/storage" -type f -exec chmod 664 {} \;
+find "$APP_PATH/bootstrap/cache" -type f -exec chmod 664 {} \;
+
+echo "✅ Permissões ajustadas"
+
+cd "$APP_PATH"
+
+php artisan optimize:clear || true
+
+echo "🚀 Finalizado"
