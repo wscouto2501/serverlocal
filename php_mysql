@@ -2,21 +2,42 @@
 
 set -e
 
-MYSQL_FILE="/root/dados_vps/dados_mysql"
-VPS_FILE="/root/dados_vps/dados_vps"
-PORTAINER_FILE="/root/dados_vps/dados_portainer"
-
+clear
 echo "====================================="
 echo "CONFIGURADOR PHP + PORTAINER (SWARM FIX)"
 echo "====================================="
 echo
 
-read -p "Nome do Site (ex: phpbet): " SITE_ID
+while true; do
+    read -p "Nome do Site (ex: phpbet): " SITE_ID
+
+    APP_PATH="/var/www/sites/$SITE_ID"
+
+    if [ -d "$APP_PATH" ]; then
+        echo "====================================="
+        echo "O diretório $APP_PATH já existe!"
+        echo "Escolha outro nome..."
+        echo "====================================="
+        echo
+    else
+        echo "Nome válido. Prosseguindo..."
+        break
+    fi
+done
+
 read -p "Banco de Dados Mysql (ex: phpbet): " MYSQL_DATA
 read -p "Dominio (ex: phpbet.souweverton.com.br): " DOMAIN
 echo
 
+
+
+
 echo "Lendo configurações..."
+
+MYSQL_FILE="/root/dados_vps/dados_mysql"
+VPS_FILE="/root/dados_vps/dados_vps"
+PORTAINER_FILE="/root/dados_vps/dados_portainer"
+
 
 MYSQL_HOST=$(grep "Host:" "$MYSQL_FILE" | awk '{print $2}')
 MYSQL_PORT=$(grep "Porta:" "$MYSQL_FILE" | awk '{print $2}')
@@ -37,7 +58,6 @@ NETWORK=$(grep "Rede interna:" "$VPS_FILE" | cut -d':' -f2 | xargs)
 # =========================
 # PATH PADRÃO CORRIGIDO SWARM
 # =========================
-APP_PATH="/var/www/sites/$SITE_ID"
 
 mkdir -p "$APP_PATH/public"
 mkdir -p "/root/php_data/nginx"
@@ -236,3 +256,6 @@ else
     echo "$RESPONSE"
     exit 1
 fi
+
+echo "arquivos armazenado no endereço: $APP_PATH"
+echo "arquivos de configurações /root/php_data"
