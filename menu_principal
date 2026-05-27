@@ -17,10 +17,12 @@ while true; do
     echo " 7) Reiniciar"
     echo " 8) Desligar"
     echo " 9) Atualizar o Servidor"
+    echo "======================================"
     echo "10) Configurar DHCP"
     echo "======================================"
     echo "11) Instalar Php + Mysql"
     echo "12) Configurar Lavarel"
+    echo "======================================"
     echo " 0) Sair"
     echo ""
 
