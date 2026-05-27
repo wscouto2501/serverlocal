@@ -20,6 +20,7 @@ while true; do
     echo "10) Configurar DHCP"
     echo "======================================"
     echo "11) Instalar Php + Mysql"
+    echo "12) Configurar Lavarel"
     echo " 0) Sair"
     echo ""
 
@@ -91,6 +92,10 @@ while true; do
                 exit 1
             fi
             ;;
+        12)
+           echo "Executando Install DHCP..."
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/laravel)
+           ;;
         0)
             clear
             echo "Saindo..."
