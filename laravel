@@ -23,6 +23,9 @@ echo "✅ Permissões ajustadas"
 
 cd "$APP_PATH"
 
+sudo apt update
+sudo apt install php-cli
+
 php artisan optimize:clear || true
 
 echo "🚀 Finalizado"
