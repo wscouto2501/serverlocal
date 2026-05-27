@@ -125,7 +125,7 @@ services:
         - "traefik.docker.network=$NETWORK"
 
   php_$SITE_ID:
-    image: wscouto2501/php-mysql:8.2
+    image: wscouto2501/php-mysql:8.2-hosting
 
     volumes:
       - $APP_PATH:/var/www/html
