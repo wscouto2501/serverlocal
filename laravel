@@ -7,6 +7,9 @@ read -p "Endereço para atualizar ex: /root/php_data/sites/phpbet => " APP_PATH
 
 echo "🔧 Ajustando Laravel: $APP_PATH"
 
+sudo apt update
+sudo apt install php-cli
+
 # Dono apenas para diretórios que precisam escrita
 chown -R www-data:www-data "$APP_PATH/storage"
 chown -R www-data:www-data "$APP_PATH/bootstrap/cache"
@@ -23,8 +26,7 @@ echo "✅ Permissões ajustadas"
 
 cd "$APP_PATH"
 
-sudo apt update
-sudo apt install php-cli
+
 
 php artisan optimize:clear || true
 
