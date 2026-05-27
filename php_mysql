@@ -1,0 +1,238 @@
+#!/bin/bash
+
+set -e
+
+MYSQL_FILE="/root/dados_vps/dados_mysql"
+VPS_FILE="/root/dados_vps/dados_vps"
+PORTAINER_FILE="/root/dados_vps/dados_portainer"
+
+echo "====================================="
+echo "CONFIGURADOR PHP + PORTAINER (SWARM FIX)"
+echo "====================================="
+echo
+
+read -p "Nome do Site (ex: phpbet): " SITE_ID
+read -p "Banco de Dados Mysql (ex: phpbet): " MYSQL_DATA
+read -p "Dominio (ex: phpbet.souweverton.com.br): " DOMAIN
+echo
+
+echo "Lendo configurações..."
+
+MYSQL_HOST=$(grep "Host:" "$MYSQL_FILE" | awk '{print $2}')
+MYSQL_PORT=$(grep "Porta:" "$MYSQL_FILE" | awk '{print $2}')
+MYSQL_USER=$(grep "Usuario:" "$MYSQL_FILE" | awk '{print $2}')
+MYSQL_PASS=$(grep "Senha:" "$MYSQL_FILE" | awk '{print $2}')
+
+USUARIO=$(grep "Usuario:" "$PORTAINER_FILE" | awk '{print $2}')
+SENHA=$(grep "Senha:" "$PORTAINER_FILE" | awk '{print $2}')
+PORTAINER_URL=$(grep "Dominio do portainer:" "$PORTAINER_FILE" | cut -d':' -f2 | xargs)
+
+TOKEN=$(curl -k -s -X POST \
+  -H "Content-Type: application/json" \
+  -d "{\"username\":\"$USUARIO\",\"password\":\"$SENHA\"}" \
+  https://$PORTAINER_URL/api/auth | jq -r .jwt)
+
+NETWORK=$(grep "Rede interna:" "$VPS_FILE" | cut -d':' -f2 | xargs)
+
+# =========================
+# PATH PADRÃO CORRIGIDO SWARM
+# =========================
+APP_PATH="/var/www/sites/$SITE_ID"
+
+mkdir -p "$APP_PATH/public"
+mkdir -p "/root/php_data/nginx"
+
+# =========================
+# NGINX CONFIG (FIX PHP)
+# =========================
+cat > "/root/php_data/nginx/$SITE_ID.conf" <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN;
+
+    root /var/www/html/public;
+    index index.php index.html;
+
+    location / {
+        try_files \$uri \$uri/ /index.php?\$query_string;
+    }
+
+    location ~ \.php$ {
+        try_files \$uri =404;
+
+        include fastcgi_params;
+        fastcgi_pass php_$SITE_ID:9000;
+
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+}
+EOF
+
+# =========================
+# DOCKER COMPOSE CORRIGIDO
+# =========================
+cat > "$APP_PATH/docker-compose.yml" <<EOF
+version: "3.7"
+
+services:
+
+  nginx_$SITE_ID:
+    image: nginx:latest
+
+    volumes:
+      - $APP_PATH:/var/www/html
+      - /root/php_data/nginx/$SITE_ID.conf:/etc/nginx/conf.d/$SITE_ID.conf
+
+    networks:
+      - $NETWORK
+
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+      labels:
+        - "traefik.enable=true"
+        - "traefik.http.routers.site$SITE_ID.rule=Host(\`$DOMAIN\`)"
+        - "traefik.http.routers.site$SITE_ID.entrypoints=websecure"
+        - "traefik.http.routers.site$SITE_ID.tls.certresolver=letsencryptresolver"
+        - "traefik.http.services.site$SITE_ID.loadbalancer.server.port=80"
+        - "traefik.docker.network=$NETWORK"
+
+  php_$SITE_ID:
+    image: wscouto2501/php-mysql:8.2
+
+    volumes:
+      - $APP_PATH:/var/www/html
+
+    environment:
+      DB_HOST: $MYSQL_HOST
+      DB_PORT: $MYSQL_PORT
+      DB_DATABASE: $MYSQL_DATA
+      DB_USERNAME: $MYSQL_USER
+      DB_PASSWORD: $MYSQL_PASS
+
+    networks:
+      - $NETWORK
+
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+
+networks:
+  $NETWORK:
+    external: true
+EOF
+
+# =========================
+# CRIAR BANCO DE DADOS
+# =========================
+echo
+echo "Criando banco de dados..."
+
+MYSQL_CONTAINER=$(docker ps --format "{{.Names}}" | grep mysql | head -n1)
+
+if [ -z "$MYSQL_CONTAINER" ]; then
+    echo "Container MySQL não encontrado"
+    exit 1
+fi
+
+docker exec -i "$MYSQL_CONTAINER" mysql \
+-u"$MYSQL_USER" \
+-p"$MYSQL_PASS" <<EOF
+CREATE DATABASE IF NOT EXISTS \`$MYSQL_DATA\`
+CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci;
+EOF
+
+echo "Banco criado: $MYSQL_DATA"
+
+# =========================
+# INDEX PHP
+# =========================
+cat > "$APP_PATH/public/index.php" <<'EOF'
+<?php
+echo "<h1>PHP OK - SWARM STABLE</h1><br>";
+
+$host = getenv('DB_HOST');
+$port = getenv('DB_PORT') ?: 3306;
+$db   = getenv('DB_DATABASE');
+$user = getenv('DB_USERNAME');
+$pass = getenv('DB_PASSWORD');
+
+try {
+
+    $pdo = new PDO(
+        "mysql:host=$host;port=$port;dbname=$db;charset=utf8mb4",
+        $user,
+        $pass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC
+        ]
+    );
+
+    echo "✅ Conectado ao MySQL com sucesso a tabela => $db";
+
+} catch (PDOException $e) {
+
+    echo "❌ Erro conexão: " . $e->getMessage();
+}
+
+
+phpinfo();
+?>
+EOF
+
+# =========================
+# DEPLOY PORTAINER
+# =========================
+echo
+echo "Deployando stack..."
+
+STACK_FILE="$APP_PATH/docker-compose.yml"
+
+SWARM_ID=$(curl -s -k \
+-H "Authorization: Bearer $TOKEN" \
+"https://$PORTAINER_URL/api/endpoints/1/docker/swarm" \
+| jq -r '.ID')
+
+if [ -z "$SWARM_ID" ] || [ "$SWARM_ID" = "null" ]; then
+    echo "Erro: não foi possível localizar o Swarm ID"
+    exit 1
+fi
+
+PAYLOAD=$(jq -n \
+  --arg name "php_$SITE_ID" \
+  --arg swarm "$SWARM_ID" \
+  --rawfile content "$STACK_FILE" \
+'{
+    Name:$name,
+    SwarmID:$swarm,
+    StackFileContent:$content
+}')
+
+RESPONSE=$(curl -s -k -X POST \
+"https://$PORTAINER_URL/api/stacks/create/swarm/string?endpointId=1" \
+-H "Authorization: Bearer $TOKEN" \
+-H "Content-Type: application/json" \
+-d "$PAYLOAD")
+
+if echo "$RESPONSE" | grep -q '"Id"'; then
+    echo
+    echo "====================================="
+    echo "STACK CRIADA COM SUCESSO"
+    echo "====================================="
+    echo "Site: $SITE_ID"
+    echo "Dominio: $DOMAIN"
+else
+    echo
+    echo "ERRO AO CRIAR STACK"
+    echo "$RESPONSE"
+    exit 1
+fi
