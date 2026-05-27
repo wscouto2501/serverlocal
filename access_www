@@ -1,6 +1,6 @@
 #!/bin/bash
 
-read -p "Caminho do wp-content (ex: /var/www/sites/b/public/wp-content): " WP_PATH
+read -p "Caminho para permissões (ex: /var/www/sites/b/public): " WP_PATH
 
 if [ ! -d "$WP_PATH" ]; then
     echo "Diretório não encontrado: $WP_PATH"
