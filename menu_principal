@@ -21,6 +21,7 @@ while true; do
     echo "======================================"
     echo "10) Instalar Php + Mysql"
     echo "11) Configurar Lavarel"
+    echo "12) Liberar acesso diretorio www"
     echo "======================================"
     echo " 0) Sair"
     echo ""
@@ -92,6 +93,10 @@ while true; do
         11)
            echo "Executando configuração Lavarel."
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/laravel)
+           ;;
+        12)
+           echo "Executando configuração de acesso www."
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/access_www)
            ;;
         0)
             clear
