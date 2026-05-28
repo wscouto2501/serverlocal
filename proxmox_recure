@@ -1,0 +1,48 @@
+#!/bin/bash
+
+set -e
+
+echo "====================================="
+echo "REPARANDO VM APÓS LIMPEZA TEMPLATE"
+echo "====================================="
+echo
+
+echo "[1/6] Recriando machine-id..."
+rm -f /etc/machine-id
+rm -f /var/lib/dbus/machine-id
+
+systemd-machine-id-setup
+
+echo "[2/6] Recriando chaves SSH..."
+ssh-keygen -A
+
+echo "[3/6] Reiniciando serviço SSH..."
+
+if systemctl list-unit-files | grep -q "^ssh.service"; then
+    systemctl restart ssh
+fi
+
+if systemctl list-unit-files | grep -q "^sshd.service"; then
+    systemctl restart sshd
+fi
+
+echo "[4/6] Reiniciando cloud-init..."
+if command -v cloud-init >/dev/null 2>&1; then
+    cloud-init clean --logs || true
+fi
+
+echo "[5/6] Limpando cache do systemd..."
+systemctl daemon-reexec
+
+echo "[6/6] Sincronizando disco..."
+sync
+
+echo
+echo "====================================="
+echo "REPARO CONCLUÍDO"
+echo "Reinicie a VM para finalizar."
+echo "====================================="
+echo
+
+echo "Execute:"
+echo "reboot"
