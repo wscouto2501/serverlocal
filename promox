@@ -1,0 +1,56 @@
+#!/bin/bash
+
+set -e
+
+echo "====================================="
+echo "LIMPEZA PARA TEMPLATE PROXMOX"
+echo "====================================="
+echo
+
+echo "[1/10] Atualizando pacotes..."
+apt update
+
+echo "[2/10] Instalando cloud-init..."
+apt install cloud-init -y
+
+echo "[3/10] Instalando qemu-guest-agent..."
+apt install qemu-guest-agent -y
+
+echo "[4/10] Habilitando qemu-guest-agent..."
+systemctl enable qemu-guest-agent
+
+echo "[5/10] Limpando cloud-init..."
+cloud-init clean --logs
+
+echo "[6/10] Limpando machine-id..."
+truncate -s 0 /etc/machine-id
+rm -f /var/lib/dbus/machine-id
+
+echo "[7/10] Removendo chaves SSH..."
+rm -f /etc/ssh/ssh_host_*
+
+echo "[8/10] Limpando cache e arquivos temporários..."
+apt clean
+apt autoremove -y
+
+rm -f /var/lib/dhcp/*
+rm -rf /tmp/*
+rm -rf /var/tmp/*
+
+echo "[9/10] Limpando histórico..."
+history -c
+history -w
+
+echo "[10/10] Sincronizando disco..."
+sync
+
+echo
+echo "====================================="
+echo "LIMPEZA CONCLUÍDA"
+echo "A VM será desligada em 5 segundos..."
+echo "====================================="
+echo
+
+sleep 5
+
+poweroff
