@@ -23,6 +23,7 @@ while true; do
     echo "11) Configurar Lavarel"
     echo "12) Liberar acesso diretorio www"
     echo "======================================"
+    echo "13) Limpar cache(Template Promox)"
     echo " 0) Sair"
     echo ""
 
@@ -98,6 +99,11 @@ while true; do
            echo "Executando configuração de acesso www."
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/access_www)
            ;;
+        13)
+           echo "Executando limpaza Proxmox."
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/proxmox)
+           ;;
+
         0)
             clear
             echo "Saindo..."
