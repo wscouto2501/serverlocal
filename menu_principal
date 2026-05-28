@@ -24,6 +24,7 @@ while true; do
     echo "12) Liberar acesso diretorio www"
     echo "======================================"
     echo "13) Limpar cache(Template Promox)"
+    echo "14) restore maquina cache"
     echo " 0) Sair"
     echo ""
 
@@ -102,6 +103,10 @@ while true; do
         13)
            echo "Executando limpaza Proxmox."
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/proxmox)
+           ;;
+        14)
+           echo "Executando restaure Proxmox."
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/proxmox_recure)
            ;;
 
         0)
