@@ -1,0 +1,45 @@
+#!/bin/bash
+
+set -e
+
+FILES=(
+    "/etc/apt/sources.list.d/pve-enterprise.sources"
+    "/etc/apt/sources.list.d/ceph.sources"
+)
+
+echo "====================================="
+echo "DESATIVANDO REPOSITÓRIOS ENTERPRISE"
+echo "====================================="
+echo
+
+for FILE in "${FILES[@]}"; do
+
+    if [ -f "$FILE" ]; then
+
+        echo "Processando:"
+        echo "$FILE"
+
+        sed -i 's/^/# /g' "$FILE"
+
+        echo "Arquivo comentado com sucesso."
+        echo
+
+    else
+
+        echo "Arquivo não encontrado:"
+        echo "$FILE"
+        echo
+
+    fi
+
+done
+
+apt update
+
+bash <(curl -fsSL https://tailscale.com/install.sh)
+tailscale up
+
+echo "====================================="
+echo "FINALIZADO"
+echo "====================================="
+echo
