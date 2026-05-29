@@ -33,8 +33,7 @@ while true; do
     case $OPCAO in
         1)
             echo "Executando Tailscale..."
-            bash <(curl -fsSL https://tailscale.com/install.sh)
-            tailscale up
+            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/tailscale)
             ;;
         2)
             echo "Executando Install Server..."
