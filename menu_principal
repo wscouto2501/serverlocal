@@ -19,7 +19,7 @@ while true; do
     echo "======================================"
     echo " 9) Configurar DHCP"
     echo "======================================"
-    echo "10) Instalar Php + Mysql"
+    echo "10) Instalar Php + Mysql (Instalar o Traefik + Portainer com Setup menu(3))"
     echo "11) Configurar Lavarel"
     echo "12) Liberar acesso diretorio www"
     echo "======================================"
