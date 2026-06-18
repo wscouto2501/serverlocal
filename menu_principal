@@ -102,15 +102,15 @@ while true; do
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/access_www)
            ;;
         13)
-           echo "Executando limpaza Proxmox."
+           echo "Executando limpaza"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/proxmox)
            ;;
         14)
-           echo "Executando restaure Proxmox."
+           echo "Executando restaure"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/proxmox_recure)
            ;;
         15)
-           echo "Executando restaure Proxmox."
+           echo "Executando configuração SSH"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/sshroot)
            ;;
 
