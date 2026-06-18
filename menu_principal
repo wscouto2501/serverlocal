@@ -25,6 +25,8 @@ while true; do
     echo "======================================"
     echo "13) Limpar Cache (Preparar Template/Clonar máquina)"
     echo "14) Restore Cache (Prepara Máquina para uso)"
+    echo "======================================"
+    echo "15) configurar SSH + root"
     echo " 0) Sair"
     echo ""
 
@@ -106,6 +108,10 @@ while true; do
         14)
            echo "Executando restaure Proxmox."
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/proxmox_recure)
+           ;;
+        15)
+           echo "Executando restaure Proxmox."
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/sshroot)
            ;;
 
         0)
