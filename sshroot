@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# Instala SSH
+apt update
+apt install -y openssh-server
+
+# Verifica se o root possui senha válida
+if passwd -S root | awk '{print $2}' | grep -qE 'L|NP'; then
+    echo "O usuário root não possui senha configurada."
+    echo "Defina uma senha para o root:"
+    passwd root
+fi
+
+# Habilita login SSH do root
+sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
+
+# Habilita autenticação por senha
+sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+
+# Adiciona as opções caso não existam
+grep -q "^PermitRootLogin" /etc/ssh/sshd_config || \
+    echo "PermitRootLogin yes" >> /etc/ssh/sshd_config
+
+grep -q "^PasswordAuthentication" /etc/ssh/sshd_config || \
+    echo "PasswordAuthentication yes" >> /etc/ssh/sshd_config
+
+# Reinicia o serviço SSH
+systemctl restart ssh 2>/dev/null || systemctl restart sshd
+
+echo "Configuração concluída."
