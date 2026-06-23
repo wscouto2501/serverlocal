@@ -55,10 +55,20 @@ SERVER_CODE="$TunnelName\nEntre em contato com o suporte no endereço: https://s
 echo -e "$SERVER_CODE" | tee /etc/issue > /dev/null
 echo -e "$SERVER_CODE" | tee /etc/motd > /dev/null
 
-# Baixa cloudflared
-curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
-  -o /usr/local/bin/cloudflared
-chmod +x /usr/local/bin/cloudflared
+# Verifica se cloudflared já existe
+if ! command -v cloudflared >/dev/null 2>&1; then
+  echo "cloudflared não encontrado. Instalando..."
+
+  curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 \
+    -o /usr/local/bin/cloudflared
+
+  chmod +x /usr/local/bin/cloudflared
+
+  echo "Instalação concluída."
+else
+  echo "cloudflared já está instalado: $(which cloudflared)"
+fi
+
 
 # Cria diretório de configuração
 mkdir -p /etc/cloudflared
