@@ -43,7 +43,11 @@ while true; do
             ;;
         3)
             echo "Executando Setup..."
-            bash <(curl -sSL setup.oriondesign.art.br)
+            if ! bash <(curl -fsSL setup.oriondesign.art.br); then
+                echo "Falha ao carregar o Setup principal."
+                echo "Tentando carregar pelo GitHub..."
+                bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/SetupOrion/main/Setup)
+            fi
             ;;
 
         4)
