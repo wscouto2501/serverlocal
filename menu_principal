@@ -43,10 +43,11 @@ while true; do
             ;;
         3)
             echo "Executando Setup..."
-            if ! bash <(curl -fsSL setup.oriondesign.art.br); then
+            if ! curl -fsSL --connect-timeout 10 --max-time 30 setup.oriondesign.art.br | bash; then
                 echo "Falha ao carregar o Setup principal."
                 echo "Tentando carregar pelo GitHub..."
-                bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/SetupOrion/main/Setup)
+                curl -fsSL --connect-timeout 10 --max-time 30 \
+            https://raw.githubusercontent.com/wscouto2501/SetupOrion/main/Setup | bash
             fi
             ;;
 
