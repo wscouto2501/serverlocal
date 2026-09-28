@@ -46,7 +46,7 @@ done
 # ============================================================
 
 POSTGRES_HOST=$(grep "^Host:" "$POSTGRES_FILE" | awk '{print $2}')
-POSTGRES_PORT=$(grep "^Porta:" "$POSTGRES_FILE" | awk '{print $2}')
+POSTGRES_PORT=$(grep "^Port:" "$POSTGRES_FILE" | awk '{print $2}')
 POSTGRES_USER=$(grep "^Usuario:" "$POSTGRES_FILE" | awk '{print $2}')
 POSTGRES_PASS=$(grep "^Senha:" "$POSTGRES_FILE" | awk '{print $2}')
 
