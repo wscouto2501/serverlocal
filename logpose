@@ -1,0 +1,237 @@
+#!/bin/bash
+
+set -e
+
+clear
+
+echo "====================================="
+echo "       CONFIGURADOR LogPose"
+echo "====================================="
+echo
+
+# ============================================================
+# DOMÍNIO
+# ============================================================
+
+while [ -z "$DOMAIN" ]; do
+    read -p "Domínio (ex: phpbet.souweverton.com.br): " DOMAIN
+
+    if [ -z "$DOMAIN" ]; then
+        echo "❌ O domínio não pode ficar vazio."
+        echo
+    fi
+done
+
+echo
+echo "Lendo configurações..."
+
+# ============================================================
+# ARQUIVOS DE CONFIGURAÇÃO
+# ============================================================
+
+POSTGRES_FILE="/root/dados_vps/dados_postgres"
+VPS_FILE="/root/dados_vps/dados_vps"
+PORTAINER_FILE="/root/dados_vps/dados_portainer"
+
+# Verifica se os arquivos existem
+for FILE in "$POSTGRES_FILE" "$VPS_FILE" "$PORTAINER_FILE"; do
+    if [ ! -f "$FILE" ]; then
+        echo "❌ Arquivo não encontrado: $FILE"
+        exit 1
+    fi
+done
+
+# ============================================================
+# POSTGRES
+# ============================================================
+
+POSTGRES_HOST=$(grep "^Host:" "$POSTGRES_FILE" | awk '{print $2}')
+POSTGRES_PORT=$(grep "^Porta:" "$POSTGRES_FILE" | awk '{print $2}')
+POSTGRES_USER=$(grep "^Usuario:" "$POSTGRES_FILE" | awk '{print $2}')
+POSTGRES_PASS=$(grep "^Senha:" "$POSTGRES_FILE" | awk '{print $2}')
+
+# ============================================================
+# PORTAINER
+# ============================================================
+
+USUARIO=$(grep "^Usuario:" "$PORTAINER_FILE" | awk '{print $2}')
+SENHA=$(grep "^Senha:" "$PORTAINER_FILE" | awk '{print $2}')
+
+PORTAINER_URL=$(grep "^Dominio do portainer:" "$PORTAINER_FILE" | cut -d':' -f2- | xargs)
+
+# ============================================================
+# REDE DOCKER
+# ============================================================
+
+NETWORK=$(grep "^Rede interna:" "$VPS_FILE" | cut -d':' -f2- | xargs)
+
+# ============================================================
+# VALIDAÇÕES
+# ============================================================
+
+if [ -z "$POSTGRES_HOST" ]; then
+    echo "❌ POSTGRES_HOST não encontrado."
+    exit 1
+fi
+
+if [ -z "$POSTGRES_PORT" ]; then
+    echo "❌ POSTGRES_PORT não encontrado."
+    exit 1
+fi
+
+if [ -z "$POSTGRES_USER" ]; then
+    echo "❌ POSTGRES_USER não encontrado."
+    exit 1
+fi
+
+if [ -z "$POSTGRES_PASS" ]; then
+    echo "❌ POSTGRES_PASS não encontrado."
+    exit 1
+fi
+
+if [ -z "$USUARIO" ] || [ -z "$SENHA" ]; then
+    echo "❌ Credenciais do Portainer não encontradas."
+    exit 1
+fi
+
+if [ -z "$PORTAINER_URL" ]; then
+    echo "❌ URL do Portainer não encontrada."
+    exit 1
+fi
+
+if [ -z "$NETWORK" ]; then
+    echo "❌ Rede interna não encontrada."
+    exit 1
+fi
+
+
+# ============================================================
+# AUTENTICAÇÃO PORTAINER
+# ============================================================
+
+echo "Autenticando no Portainer..."
+
+TOKEN=$(curl -k -s -X POST \
+    -H "Content-Type: application/json" \
+    -d "{\"username\":\"$USUARIO\",\"password\":\"$SENHA\"}" \
+    "https://$PORTAINER_URL/api/auth" \
+    | jq -r '.jwt')
+
+if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+    echo "❌ Não foi possível autenticar no Portainer."
+    exit 1
+fi
+
+echo "✅ Portainer autenticado."
+
+# ============================================================
+# SENHA / DATABASE URL
+# ============================================================
+
+DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASS}@${POSTGRES_HOST}:${POSTGRES_PORT}/logpose"
+SECRET_KEY=$(openssl rand -hex 32)
+
+# ============================================================
+# GERAR DOCKER COMPOSE
+# ============================================================
+
+COMPOSE_FILE="/root/logpose.yaml"
+
+echo
+echo "Gerando $COMPOSE_FILE..."
+
+cat > "$COMPOSE_FILE" <<EOF
+services:
+
+  logpose:
+    image: ghcr.io/ilumincloud-applications/logpose:latest
+
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SECRET_KEY=${SECRET_KEY}
+      - META_GRAPH_API_VERSION=v25.0
+
+    networks:
+      - ${NETWORK}
+
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.logpose.rule=Host(\`${DOMAIN}\`)
+      - traefik.http.routers.logpose.entrypoints=websecure
+      - traefik.http.routers.logpose.priority=1
+      - traefik.http.routers.logpose.tls.certresolver=letsencryptresolver
+      - traefik.http.routers.logpose.service=logpose
+      - traefik.http.services.logpose.loadbalancer.server.port=8000
+      - traefik.http.services.logpose.loadbalancer.passHostHeader=true
+
+    restart: unless-stopped
+
+networks:
+  ${NETWORK}:
+    external: true
+    name: ${NETWORK}
+EOF
+
+echo
+echo "====================================="
+echo "✅ CONFIGURAÇÃO GERADA COM SUCESSO"
+echo "====================================="
+echo
+echo "Arquivo:"
+echo "  $COMPOSE_FILE"
+echo
+echo "Domínio:"
+echo "  https://$DOMAIN"
+echo
+echo "Rede:"
+echo "  $NETWORK"
+echo
+
+
+# =========================
+# DEPLOY PORTAINER
+# =========================
+echo
+echo "Deployando stack..."
+
+STACK_FILE="/root/logpose.yaml"
+
+SWARM_ID=$(curl -s -k \
+-H "Authorization: Bearer $TOKEN" \
+"https://$PORTAINER_URL/api/endpoints/1/docker/swarm" \
+| jq -r '.ID')
+
+if [ -z "$SWARM_ID" ] || [ "$SWARM_ID" = "null" ]; then
+    echo "Erro: não foi possível localizar o Swarm ID"
+    exit 1
+fi
+
+PAYLOAD=$(jq -n \
+  --arg name "php_$SITE_ID" \
+  --arg swarm "$SWARM_ID" \
+  --rawfile content "$STACK_FILE" \
+'{
+    Name:$name,
+    SwarmID:$swarm,
+    StackFileContent:$content
+}')
+
+RESPONSE=$(curl -s -k -X POST \
+"https://$PORTAINER_URL/api/stacks/create/swarm/string?endpointId=1" \
+-H "Authorization: Bearer $TOKEN" \
+-H "Content-Type: application/json" \
+-d "$PAYLOAD")
+
+if echo "$RESPONSE" | grep -q '"Id"'; then
+    echo
+    echo "====================================="
+    echo "STACK CRIADA COM SUCESSO"
+    echo "====================================="
+    echo "Site: $SITE_ID"
+    echo "Dominio: $DOMAIN"
+else
+    echo
+    echo "ERRO AO CRIAR STACK"
+    echo "$RESPONSE"
+    exit 1
+fi
