@@ -131,6 +131,57 @@ echo "✅ Portainer autenticado."
 DATABASE_URL="postgresql://${POSTGRES_USER}:${POSTGRES_PASS}@${POSTGRES_HOST}:${POSTGRES_PORT}/logpose"
 SECRET_KEY=$(openssl rand -hex 32)
 
+
+# ============================================================
+# CRIANDO BANCO DE DADOS.
+# ============================================================
+
+DB_NAME="logpose"
+POSTGRES_USER="postgres"
+
+echo "====================================="
+echo " Criando banco PostgreSQL"
+echo "====================================="
+echo
+
+# Procura um container PostgreSQL em execução
+POSTGRES_CONTAINER=$(docker ps --format '{{.Names}}' | while read CONTAINER; do
+    if docker exec "$CONTAINER" sh -c 'command -v psql >/dev/null 2>&1' 2>/dev/null; then
+        echo "$CONTAINER"
+        break
+    fi
+done)
+
+if [ -z "$POSTGRES_CONTAINER" ]; then
+    echo "❌ Container PostgreSQL não encontrado."
+    exit 1
+fi
+
+echo "Container PostgreSQL: $POSTGRES_CONTAINER"
+echo
+
+# Verifica se o banco já existe
+if docker exec "$POSTGRES_CONTAINER" \
+    psql -U "$POSTGRES_USER" -tAc "SELECT 1 FROM pg_database WHERE datname='$DB_NAME'" \
+    | grep -q 1; then
+
+    echo "⚠️ O banco '$DB_NAME' já existe."
+else
+
+    echo "Criando banco '$DB_NAME'..."
+
+    docker exec "$POSTGRES_CONTAINER" \
+        psql -U "$POSTGRES_USER" \
+        -c "CREATE DATABASE $DB_NAME;"
+
+    echo "✅ Banco '$DB_NAME' criado com sucesso."
+fi
+
+echo
+echo "====================================="
+echo " Concluído"
+echo "====================================="
+
 # ============================================================
 # GERAR DOCKER COMPOSE
 # ============================================================
