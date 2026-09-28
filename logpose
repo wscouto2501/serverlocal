@@ -258,7 +258,7 @@ if [ -z "$SWARM_ID" ] || [ "$SWARM_ID" = "null" ]; then
 fi
 
 PAYLOAD=$(jq -n \
-  --arg name "php_$SITE_ID" \
+  --arg name "logpose" \
   --arg swarm "$SWARM_ID" \
   --rawfile content "$STACK_FILE" \
 '{
