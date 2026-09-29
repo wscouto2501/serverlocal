@@ -28,6 +28,7 @@ while true; do
     echo "======================================"
     echo "15) configurar SSH + root"
     echo "16) Instalar o LogPose (Gerenciador de Utms)"
+    echo "17) Adicionar chave SSH publica para login automático."
     echo " 0) Sair"
     echo ""
 
@@ -118,6 +119,11 @@ while true; do
            echo "Executando configuração SSH"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/logpose)
            ;;
+        17)
+           echo "Executando configuração SSH"
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/sshkey)
+           ;;
+
         0)
             clear
             echo "Saindo..."
