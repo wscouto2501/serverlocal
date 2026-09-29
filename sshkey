@@ -2,6 +2,8 @@
 
 set -e
 
+clear
+
 SSH_DIR="/root/.ssh"
 AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
 
