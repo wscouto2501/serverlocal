@@ -1,0 +1,38 @@
+#!/bin/bash
+
+set -e
+
+SSH_DIR="/root/.ssh"
+AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+
+# Solicita a chave pública ao usuário
+echo "Digite sua chave pública SSH:"
+read -r PUBLIC_KEY
+
+# Valida se a chave foi informada
+if [ -z "$PUBLIC_KEY" ]; then
+    echo "Erro: nenhuma chave pública foi informada."
+    exit 1
+fi
+
+# Cria o diretório SSH
+mkdir -p "$SSH_DIR"
+
+# Permissões do diretório
+chmod 700 "$SSH_DIR"
+
+# Cria o arquivo se não existir
+touch "$AUTHORIZED_KEYS"
+
+# Adiciona a chave somente se ela ainda não existir
+if grep -Fxq "$PUBLIC_KEY" "$AUTHORIZED_KEYS"; then
+    echo "A chave já existe em $AUTHORIZED_KEYS"
+else
+    echo "$PUBLIC_KEY" >> "$AUTHORIZED_KEYS"
+    echo "Chave adicionada com sucesso."
+fi
+
+# Permissões do arquivo
+chmod 600 "$AUTHORIZED_KEYS"
+
+echo "SSH configurado com sucesso."
