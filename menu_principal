@@ -29,6 +29,7 @@ while true; do
     echo "15) configurar SSH + root"
     echo "16) Instalar o LogPose (Gerenciador de Utms)"
     echo "17) Adicionar chave SSH publica para login automático."
+    echo "18) Instalar Coolfy(plataforma de gerenciamento de aplicações)."
     echo " 0) Sair"
     echo ""
 
@@ -122,6 +123,10 @@ while true; do
         17)
            echo "Executando configuração SSH"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/sshkey)
+           ;;
+        18)
+           echo "Executando Instalação do Coolify."
+           bash <(curl -fsSL https://cdn.coollabs.io/coolify/install.sh)
            ;;
 
         0)
