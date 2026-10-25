@@ -6,6 +6,7 @@ set -Eeuo pipefail
 # VOCERO CRM - Instalador automático para Ubuntu
 # Repositório: https://github.com/kevinrivm/vocero-crm
 # ==========================================================
+clear
 
 REPO_URL="https://github.com/kevinrivm/vocero-crm.git"
 INSTALL_DIR="/opt/vocero"
