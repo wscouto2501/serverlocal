@@ -8,7 +8,7 @@ set -Eeuo pipefail
 # ==========================================================
 clear
 
-REPO_URL="https://github.com/kevinrivm/vocero-crm.git"
+REPO_URL="https://github.com/wscouto2501/vocero-crm.git"
 INSTALL_DIR="/opt/vocero"
 
 log()  { echo -e "\n\033[1;32m[INFO]\033[0m $*"; }
