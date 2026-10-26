@@ -6,6 +6,7 @@ set -Eeuo pipefail
 # Instalação do OpenAI Codex CLI
 # Ubuntu / Debian
 # ==========================================
+clear
 
 echo "=========================================="
 echo " Instalando o OpenAI Codex CLI"
