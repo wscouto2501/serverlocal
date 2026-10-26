@@ -1,3 +1,4 @@
+```bash
 #!/bin/bash
 
 set -e
@@ -7,7 +8,83 @@ clear
 SSH_DIR="/root/.ssh"
 AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
 
-# Solicita a chave pública ao usuário
+# Verifica se está executando como root
+if [ "$EUID" -ne 0 ]; then
+    echo "Erro: execute este script como root."
+    exit 1
+fi
+
+# Cria o diretório SSH
+mkdir -p "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+
+# Verifica se já existem chaves autorizadas
+if [ -s "$AUTHORIZED_KEYS" ]; then
+    echo "======================================"
+    echo " CHAVES SSH JÁ EXISTENTES"
+    echo "======================================"
+    echo
+    echo "1) Visualizar chaves existentes"
+    echo "2) Apagar todas e criar uma nova"
+    echo "3) Manter as existentes e adicionar outra"
+    echo "4) Sair"
+    echo
+
+    read -rp "Escolha uma opção [1-4]: " OPTION
+
+    case "$OPTION" in
+        1)
+            echo
+            echo "Chaves atualmente autorizadas:"
+            echo "--------------------------------------"
+            cat "$AUTHORIZED_KEYS"
+            echo "--------------------------------------"
+            echo
+            read -rp "Deseja adicionar uma nova chave também? (s/N): " ADD_KEY
+
+            if [[ ! "$ADD_KEY" =~ ^[sS]$ ]]; then
+                echo "Nenhuma alteração realizada."
+                exit 0
+            fi
+            ;;
+
+        2)
+            echo
+            echo "ATENÇÃO: todas as chaves autorizadas serão apagadas."
+            read -rp "Confirma a exclusão? (s/N): " CONFIRM
+
+            if [[ "$CONFIRM" =~ ^[sS]$ ]]; then
+                # Faz backup antes de apagar
+                cp "$AUTHORIZED_KEYS" \
+                    "${AUTHORIZED_KEYS}.backup.$(date +%Y%m%d%H%M%S)"
+
+                # Limpa o arquivo
+                : > "$AUTHORIZED_KEYS"
+                echo "Chaves antigas apagadas. Backup criado."
+            else
+                echo "Operação cancelada."
+                exit 0
+            fi
+            ;;
+
+        3)
+            echo "As chaves existentes serão preservadas."
+            ;;
+
+        4)
+            echo "Operação cancelada."
+            exit 0
+            ;;
+
+        *)
+            echo "Opção inválida."
+            exit 1
+            ;;
+    esac
+fi
+
+# Solicita a nova chave pública
+echo
 echo "Digite sua chave pública SSH:"
 read -r PUBLIC_KEY
 
@@ -17,24 +94,35 @@ if [ -z "$PUBLIC_KEY" ]; then
     exit 1
 fi
 
-# Cria o diretório SSH
-mkdir -p "$SSH_DIR"
-
-# Permissões do diretório
-chmod 700 "$SSH_DIR"
+# Valida o formato básico da chave
+if [[ ! "$PUBLIC_KEY" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521)[[:space:]] ]]; then
+    echo "Erro: formato de chave pública SSH não reconhecido."
+    exit 1
+fi
 
 # Cria o arquivo se não existir
 touch "$AUTHORIZED_KEYS"
 
 # Adiciona a chave somente se ela ainda não existir
 if grep -Fxq "$PUBLIC_KEY" "$AUTHORIZED_KEYS"; then
-    echo "A chave já existe em $AUTHORIZED_KEYS"
+    echo "Esta chave já está autorizada."
 else
-    echo "$PUBLIC_KEY" >> "$AUTHORIZED_KEYS"
+    printf '%s\n' "$PUBLIC_KEY" >> "$AUTHORIZED_KEYS"
     echo "Chave adicionada com sucesso."
 fi
 
-# Permissões do arquivo
+# Define as permissões corretas
+chmod 700 "$SSH_DIR"
 chmod 600 "$AUTHORIZED_KEYS"
 
-echo "SSH configurado com sucesso."
+echo
+echo "======================================"
+echo " SSH CONFIGURADO COM SUCESSO"
+echo "======================================"
+echo
+echo "Arquivo: $AUTHORIZED_KEYS"
+echo "Total de chaves autorizadas: $(grep -cve '^[[:space:]]*$' "$AUTHORIZED_KEYS" || true)"
+echo
+echo "Chaves atualmente autorizadas:"
+cat "$AUTHORIZED_KEYS"
+```
