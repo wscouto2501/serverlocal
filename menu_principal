@@ -33,6 +33,8 @@ while true; do
     echo "19) Instalar CRM Vocero(plataforma de gerenciamento de cliente pelo Whatsapp)."
     echo "20) Instalar Instalar o Codex para editar codigo com OpenAI."
     echo "21) Gerar chave publica para conectar sem senha."
+    echo "22) Adicionar chave publica para conectar sem senha."
+
 
     echo " 0) Sair"
     echo ""
@@ -143,6 +145,10 @@ while true; do
         21)
            echo "Criando chave SSH para acesso sem senha"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/keyssh)
+           ;;
+        22)
+           echo "Adicionando chave SSH para acesso sem senha"
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/sshpublic)
            ;;
 
         0)
