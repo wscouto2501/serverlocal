@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# ==========================================
+# Instalação do OpenAI Codex CLI
+# Ubuntu / Debian
+# ==========================================
+
+echo "=========================================="
+echo " Instalando o OpenAI Codex CLI"
+echo "=========================================="
+
+# Verifica se está executando como root
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "Execute como root ou utilizando sudo."
+    exit 1
+fi
+
+# Instala dependências necessárias
+if command -v apt-get >/dev/null 2>&1; then
+    echo "[1/5] Instalando dependências..."
+    apt-get update
+    apt-get install -y curl ca-certificates
+fi
+
+# Instala o Codex CLI
+echo "[2/5] Baixando e instalando o Codex CLI..."
+curl -fsSL https://chatgpt.com/codex/install.sh | sh
+
+# Configura o PATH para a sessão atual
+echo "[3/5] Configurando o PATH..."
+export PATH="/root/.local/bin:${PATH}"
+
+# Persiste o PATH no Bash
+PROFILE="/root/.bashrc"
+PATH_LINE='export PATH="/root/.local/bin:$PATH"'
+
+if ! grep -Fqx "$PATH_LINE" "$PROFILE" 2>/dev/null; then
+    echo "$PATH_LINE" >> "$PROFILE"
+fi
+
+# Verifica se o executável existe
+echo "[4/5] Verificando a instalação..."
+
+if [[ -x "/root/.local/bin/codex" ]]; then
+    CODEX_BIN="/root/.local/bin/codex"
+elif command -v codex >/dev/null 2>&1; then
+    CODEX_BIN="$(command -v codex)"
+else
+    echo "ERRO: Codex não encontrado após a instalação."
+    echo "Verifique os logs e o diretório /root/.local/bin."
+    exit 1
+fi
+
+# Exibe informações
+echo "[5/5] Instalação concluída!"
+echo
+echo "Executável: $CODEX_BIN"
+echo
+echo "Versão instalada:"
+"$CODEX_BIN" --version
+
+echo
+echo "Localização do comando:"
+command -v codex || true
+
+echo
+echo "=========================================="
+echo " Para começar, execute:"
+echo " codex"
+echo "=========================================="
+echo
+echo "Se necessário, autentique sua conta seguindo"
+echo "as instruções exibidas pelo Codex."
