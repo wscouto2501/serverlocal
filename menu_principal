@@ -28,13 +28,12 @@ while true; do
     echo "======================================"
     echo "15) configurar SSH + root"
     echo "16) Instalar o LogPose (Gerenciador de Utms)"
-    echo "17) Adicionar chave SSH publica para login automático."
-    echo "18) Instalar Coolfy(plataforma de gerenciamento de aplicações)."
-    echo "19) Instalar CRM Vocero(plataforma de gerenciamento de cliente pelo Whatsapp)."
-    echo "20) Instalar Instalar o Codex para editar codigo com OpenAI."
-    echo "21) Gerar chave publica para conectar sem senha."
-    echo "22) Adicionar chave publica para conectar sem senha."
-
+    echo "17) Instalar Coolfy(plataforma de gerenciamento de aplicações)."
+    echo "18) Instalar CRM Vocero(plataforma de gerenciamento de cliente pelo Whatsapp)."
+    echo "19) Instalar Instalar o Codex para editar codigo com OpenAI."
+    echo "======================================"
+    echo "20) Gerar chave publica para conectar sem senha."
+    echo "21) Adicionar chave publica para conectar sem senha."
 
     echo " 0) Sair"
     echo ""
@@ -127,26 +126,22 @@ while true; do
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/logpose)
            ;;
         17)
-           echo "Executando configuração SSH"
-           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/sshkey)
-           ;;
-        18)
            echo "Executando Instalação do Coolify."
            bash <(curl -fsSL https://cdn.coollabs.io/coolify/install.sh)
            ;;
-        19)
+        18)
            echo "Executando Instalação do CRM Vocero"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/crmvocero)
            ;;
-        20)
+        19)
            echo "Executando Instalação do Codex da OpenAI"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/codex)
            ;;
-        21)
+        20)
            echo "Criando chave SSH para acesso sem senha"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/keyssh)
            ;;
-        22)
+        21)
            echo "Adicionando chave SSH para acesso sem senha"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/sshpublic)
            ;;
