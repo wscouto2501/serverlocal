@@ -20,6 +20,7 @@ chmod 600 "$AUTHORIZED_KEYS"
 
 # Exibe as chaves com numeração e fingerprint.
 listar_chaves() {
+    clear
     echo
     echo "========== CHAVES CADASTRADAS =========="
 
@@ -55,6 +56,7 @@ listar_chaves() {
 
 # Cadastra uma nova chave pública.
 cadastrar_chave() {
+    clear
     local public_key key_blob
 
     echo
@@ -93,6 +95,7 @@ cadastrar_chave() {
 
 # Apaga uma chave escolhida pela numeração.
 apagar_chave() {
+    clear
     local -a keys=()
     local line choice confirm
     local count=0
@@ -182,6 +185,7 @@ apagar_chave() {
 
 # Menu principal.
 while true; do
+    clear
     echo
     echo "======================================"
     echo "   GERENCIADOR DE CHAVES SSH - ROOT"
