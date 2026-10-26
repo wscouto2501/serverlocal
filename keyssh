@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+# ==========================================
+# Gerar chave SSH e autorizar acesso local
+# Ubuntu / Debian
+# ==========================================
+
+SSH_DIR="${HOME}/.ssh"
+KEY_FILE="${SSH_DIR}/id_ed25519"
+AUTHORIZED_KEYS="${SSH_DIR}/authorized_keys"
+
+echo "=========================================="
+echo " Configuração de chave SSH"
+echo "=========================================="
+
+# Instalar cliente e servidor SSH, se necessário
+if command -v apt-get >/dev/null 2>&1; then
+    apt-get update
+    apt-get install -y openssh-client openssh-server
+fi
+
+# Criar diretório SSH
+mkdir -p "$SSH_DIR"
+chmod 700 "$SSH_DIR"
+
+# Gerar chave caso não exista
+if [[ ! -f "$KEY_FILE" ]]; then
+    ssh-keygen -t ed25519 \
+        -f "$KEY_FILE" \
+        -N "" \
+        -C "$(whoami)@$(hostname)"
+    echo "Chave SSH criada."
+else
+    echo "Chave SSH já existe; preservando a chave atual."
+fi
+
+chmod 600 "$KEY_FILE"
+chmod 644 "${KEY_FILE}.pub"
+
+# Autorizar a chave pública para este usuário
+touch "$AUTHORIZED_KEYS"
+chmod 600 "$AUTHORIZED_KEYS"
+
+PUBLIC_KEY="$(cat "${KEY_FILE}.pub")"
+
+if ! grep -qxF "$PUBLIC_KEY" "$AUTHORIZED_KEYS"; then
+    printf '%s\n' "$PUBLIC_KEY" >> "$AUTHORIZED_KEYS"
+fi
+
+# Iniciar o serviço SSH
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl enable --now ssh 2>/dev/null ||
+        systemctl enable --now sshd 2>/dev/null ||
+        true
+fi
+
+echo
+echo "=========================================="
+echo " CONFIGURAÇÃO CONCLUÍDA"
+echo "=========================================="
+
+echo
+echo "Chave privada:"
+echo "$KEY_FILE"
+
+echo
+echo "Chave pública:"
+cat "${KEY_FILE}.pub"
+
+echo
+echo "Fingerprint:"
+ssh-keygen -lf "${KEY_FILE}.pub"
+
+echo
+echo "Teste de autenticação local:"
+ssh -i "$KEY_FILE" \
+    -o IdentitiesOnly=yes \
+    -o StrictHostKeyChecking=accept-new \
+    "$(whoami)@localhost" \
+    'echo "Autenticação SSH local funcionando!"' ||
+    echo "A chave foi configurada, mas verifique o serviço SSH e a autenticação local."
