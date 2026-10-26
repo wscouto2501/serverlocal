@@ -1,11 +1,14 @@
+```bash
 #!/bin/bash
 
-set -e
+set -Eeuo pipefail
 
 clear
 
 SSH_DIR="/root/.ssh"
 AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
+PUBLIC_KEY_FILE="$SSH_DIR/id_ed25519.pub"
+PRIVATE_KEY_FILE="$SSH_DIR/id_ed25519"
 
 # Verifica se está executando como root
 if [ "$EUID" -ne 0 ]; then
@@ -13,19 +16,56 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Cria o diretório SSH
+# Cria o diretório SSH e ajusta as permissões
 mkdir -p "$SSH_DIR"
 chmod 700 "$SSH_DIR"
 
-# Verifica se já existem chaves autorizadas
+# Verifica se o par de chaves existe
+if [ ! -f "$PUBLIC_KEY_FILE" ] || [ ! -f "$PRIVATE_KEY_FILE" ]; then
+    echo "Par de chaves SSH não encontrado."
+
+    read -rp "Deseja gerar um novo par de chaves? (s/N): " GENERATE
+
+    if [[ "$GENERATE" =~ ^[sS]$ ]]; then
+        if [ -e "$PRIVATE_KEY_FILE" ] || [ -e "$PUBLIC_KEY_FILE" ]; then
+            echo "Já existe um dos arquivos da chave."
+            echo "Por segurança, nenhum arquivo existente será sobrescrito."
+            exit 1
+        fi
+
+        ssh-keygen -t ed25519 -f "$PRIVATE_KEY_FILE" \
+            -N "" -C "root@$(hostname)"
+
+        chmod 600 "$PRIVATE_KEY_FILE"
+        chmod 644 "$PUBLIC_KEY_FILE"
+    else
+        echo "Operação cancelada."
+        exit 0
+    fi
+fi
+
+# Lê a chave pública diretamente do arquivo gerado
+PUBLIC_KEY="$(cat "$PUBLIC_KEY_FILE")"
+
+# Valida o conteúdo da chave pública
+if [[ ! "$PUBLIC_KEY" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521)[[:space:]] ]]; then
+    echo "Erro: a chave pública não possui um formato reconhecido."
+    exit 1
+fi
+
+# Cria o arquivo de chaves autorizadas, se necessário
+touch "$AUTHORIZED_KEYS"
+chmod 600 "$AUTHORIZED_KEYS"
+
+# Menu de gerenciamento das chaves autorizadas
 if [ -s "$AUTHORIZED_KEYS" ]; then
     echo "======================================"
     echo " CHAVES SSH JÁ EXISTENTES"
     echo "======================================"
     echo
     echo "1) Visualizar chaves existentes"
-    echo "2) Apagar todas e criar uma nova"
-    echo "3) Manter as existentes e adicionar outra"
+    echo "2) Apagar todas e adicionar a chave atual da VPS"
+    echo "3) Manter as existentes e adicionar a chave atual da VPS"
     echo "4) Sair"
     echo
 
@@ -39,27 +79,22 @@ if [ -s "$AUTHORIZED_KEYS" ]; then
             cat "$AUTHORIZED_KEYS"
             echo "--------------------------------------"
             echo
-            read -rp "Deseja adicionar uma nova chave também? (s/N): " ADD_KEY
-
-            if [[ ! "$ADD_KEY" =~ ^[sS]$ ]]; then
-                echo "Nenhuma alteração realizada."
-                exit 0
-            fi
+            echo "Chave pública gerada nesta VPS:"
+            echo "$PUBLIC_KEY"
+            exit 0
             ;;
 
         2)
             echo
-            echo "ATENÇÃO: todas as chaves autorizadas serão apagadas."
-            read -rp "Confirma a exclusão? (s/N): " CONFIRM
+            echo "ATENÇÃO: todas as chaves autorizadas serão removidas."
+            echo "Um backup será criado antes da alteração."
+            read -rp "Confirma a operação? (s/N): " CONFIRM
 
             if [[ "$CONFIRM" =~ ^[sS]$ ]]; then
-                # Faz backup antes de apagar
-                cp "$AUTHORIZED_KEYS" \
-                    "${AUTHORIZED_KEYS}.backup.$(date +%Y%m%d%H%M%S)"
-
-                # Limpa o arquivo
+                BACKUP="${AUTHORIZED_KEYS}.backup.$(date +%Y%m%d%H%M%S)"
+                cp -p "$AUTHORIZED_KEYS" "$BACKUP"
                 : > "$AUTHORIZED_KEYS"
-                echo "Chaves antigas apagadas. Backup criado."
+                echo "Backup criado em: $BACKUP"
             else
                 echo "Operação cancelada."
                 exit 0
@@ -82,45 +117,45 @@ if [ -s "$AUTHORIZED_KEYS" ]; then
     esac
 fi
 
-# Solicita a nova chave pública
-echo
-echo "Digite sua chave pública SSH:"
-read -r PUBLIC_KEY
-
-# Valida se a chave foi informada
-if [ -z "$PUBLIC_KEY" ]; then
-    echo "Erro: nenhuma chave pública foi informada."
-    exit 1
-fi
-
-# Valida o formato básico da chave
-if [[ ! "$PUBLIC_KEY" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521)[[:space:]] ]]; then
-    echo "Erro: formato de chave pública SSH não reconhecido."
-    exit 1
-fi
-
-# Cria o arquivo se não existir
-touch "$AUTHORIZED_KEYS"
-
-# Adiciona a chave somente se ela ainda não existir
-if grep -Fxq "$PUBLIC_KEY" "$AUTHORIZED_KEYS"; then
-    echo "Esta chave já está autorizada."
+# Adiciona a chave pública real da VPS, sem duplicá-la
+if grep -Fxq -- "$PUBLIC_KEY" "$AUTHORIZED_KEYS"; then
+    echo "A chave pública desta VPS já está autorizada."
 else
     printf '%s\n' "$PUBLIC_KEY" >> "$AUTHORIZED_KEYS"
-    echo "Chave adicionada com sucesso."
+    echo "Chave pública da VPS adicionada com sucesso."
 fi
 
-# Define as permissões corretas
+# Define as permissões
 chmod 700 "$SSH_DIR"
+chmod 600 "$PRIVATE_KEY_FILE"
 chmod 600 "$AUTHORIZED_KEYS"
+chmod 644 "$PUBLIC_KEY_FILE"
 
 echo
 echo "======================================"
-echo " SSH CONFIGURADO COM SUCESSO"
+echo " SSH CONFIGURADO"
 echo "======================================"
 echo
-echo "Arquivo: $AUTHORIZED_KEYS"
-echo "Total de chaves autorizadas: $(grep -cve '^[[:space:]]*$' "$AUTHORIZED_KEYS" || true)"
+echo "Arquivo de chaves autorizadas:"
+echo "$AUTHORIZED_KEYS"
+
+echo
+echo "Fingerprint da chave pública:"
+ssh-keygen -lf "$PUBLIC_KEY_FILE"
+
+echo
+echo "Chave pública gerada nesta VPS:"
+cat "$PUBLIC_KEY_FILE"
+
+echo
+echo "Total de chaves autorizadas:"
+grep -cve '^[[:space:]]*$' "$AUTHORIZED_KEYS" || true
+
 echo
 echo "Chaves atualmente autorizadas:"
 cat "$AUTHORIZED_KEYS"
+
+echo
+echo "Configuração concluída."
+echo "======================================"
+```
