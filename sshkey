@@ -1,4 +1,3 @@
-```bash
 #!/bin/bash
 
 set -e
@@ -125,4 +124,3 @@ echo "Total de chaves autorizadas: $(grep -cve '^[[:space:]]*$' "$AUTHORIZED_KEY
 echo
 echo "Chaves atualmente autorizadas:"
 cat "$AUTHORIZED_KEYS"
-```
