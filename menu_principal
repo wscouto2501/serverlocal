@@ -31,6 +31,7 @@ while true; do
     echo "17) Adicionar chave SSH publica para login automático."
     echo "18) Instalar Coolfy(plataforma de gerenciamento de aplicações)."
     echo "19) Instalar CRM Vocero(plataforma de gerenciamento de cliente pelo Whatsapp)."
+    echo "20) Instalar Instalar o Codex para editar codigo com OpenAI."
 
     echo " 0) Sair"
     echo ""
@@ -134,6 +135,11 @@ while true; do
            echo "Executando Instalação do CRM Vocero"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/crmvocero)
            ;;
+        20)
+           echo "Executando Instalação do Codex da OpenAI"
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/codex)
+           ;;
+
 
         0)
             clear
