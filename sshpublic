@@ -12,17 +12,34 @@ fi
 SSH_DIR="/root/.ssh"
 AUTHORIZED_KEYS="$SSH_DIR/authorized_keys"
 
+# Limpa a tela com segurança.
+limpar_tela() {
+    if [[ -t 1 && -n "${TERM:-}" ]]; then
+        clear 2>/dev/null || printf '\033[2J\033[H'
+    else
+        printf '\n%.0s' {1..3}
+    fi
+}
+
+# Aguarda o usuário antes de continuar.
+pausar() {
+    echo
+    read -r -p "Pressione Enter para continuar..." _
+}
+
 # Prepara o diretório e o arquivo de chaves.
 install -d -o root -g root -m 700 "$SSH_DIR"
 touch "$AUTHORIZED_KEYS"
 chown root:root "$AUTHORIZED_KEYS"
 chmod 600 "$AUTHORIZED_KEYS"
 
-# Exibe as chaves com numeração e fingerprint.
+# Lista as chaves públicas cadastradas.
 listar_chaves() {
-    clear
-    echo
-    echo "========== CHAVES CADASTRADAS =========="
+    limpar_tela
+
+    echo "======================================"
+    echo "        CHAVES SSH CADASTRADAS"
+    echo "======================================"
 
     local count=0
     local line key_type fingerprint comment
@@ -32,6 +49,7 @@ listar_chaves() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
         count=$((count + 1))
+
         key_type=$(awk '{print $1}' <<< "$line")
         comment=$(awk '{$1=""; $2=""; sub(/^[[:space:]]+/, ""); print}' <<< "$line")
 
@@ -44,64 +62,85 @@ listar_chaves() {
         printf "\n[%d] Tipo: %s\n" "$count" "$key_type"
         printf "    Fingerprint: %s\n" "${fingerprint:-Indisponível}"
         printf "    Comentário: %s\n" "${comment:-Sem comentário}"
+
     done < "$AUTHORIZED_KEYS"
 
     if (( count == 0 )); then
+        echo
         echo "Nenhuma chave pública cadastrada."
     fi
 
     echo
     echo "Total: $count chave(s)"
+
+    pausar
 }
 
 # Cadastra uma nova chave pública.
 cadastrar_chave() {
-    clear
+    limpar_tela
+
     local public_key key_blob
 
+    echo "======================================"
+    echo "         CADASTRAR CHAVE SSH"
+    echo "======================================"
     echo
-    echo "========== CADASTRAR CHAVE =========="
     echo "Cole a chave pública gerada no Termius."
     echo "Exemplo: ssh-ed25519 AAAA... computador"
     echo
 
     read -r -p "Chave pública: " public_key
 
-    if [[ ! "$public_key" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521)[[:space:]]+[A-Za-z0-9+/]+={0,3}([[:space:]].*)?$ ]]; then
+    if [[ ! "$public_key" =~ ^(ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nist521|ecdsa-sha2-nistp521)[[:space:]]+[A-Za-z0-9+/]+={0,3}([[:space:]].*)?$ ]]; then
+        echo
         echo "ERRO: formato de chave pública inválido."
+        pausar
         return
     fi
 
     if ! printf '%s\n' "$public_key" |
         ssh-keygen -lf /dev/stdin >/dev/null 2>&1; then
+        echo
         echo "ERRO: não foi possível validar a chave."
+        pausar
         return
     fi
 
     key_blob=$(awk '{print $2}' <<< "$public_key")
 
     if awk -v key="$key_blob" '$2 == key { found=1 } END { exit !found }' "$AUTHORIZED_KEYS"; then
+        echo
         echo "Esta chave já está cadastrada."
+        pausar
         return
     fi
 
     printf '%s\n' "$public_key" >> "$AUTHORIZED_KEYS"
+
     chown root:root "$AUTHORIZED_KEYS"
     chmod 600 "$AUTHORIZED_KEYS"
 
-    echo "Chave cadastrada com sucesso."
+    echo
+    echo "Chave cadastrada com sucesso!"
+    echo
     printf '%s\n' "$public_key" | ssh-keygen -lf /dev/stdin
+
+    pausar
 }
 
-# Apaga uma chave escolhida pela numeração.
+# Apaga uma chave escolhida pelo número.
 apagar_chave() {
-    clear
+    limpar_tela
+
     local -a keys=()
     local line choice confirm
     local count=0
+    local i fp tmp current
 
-    echo
-    echo "========== APAGAR CHAVE =========="
+    echo "======================================"
+    echo "           APAGAR CHAVE SSH"
+    echo "======================================"
 
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -z "${line//[[:space:]]/}" ]] && continue
@@ -112,101 +151,126 @@ apagar_chave() {
     count=${#keys[@]}
 
     if (( count == 0 )); then
+        echo
         echo "Não há chaves para apagar."
+        pausar
         return
     fi
 
-    for ((i=0; i<count; i++)); do
-        local fp
+    echo
+
+    for ((i = 0; i < count; i++)); do
         fp=$(
             printf '%s\n' "${keys[$i]}" |
                 ssh-keygen -lf /dev/stdin 2>/dev/null |
                 awk '{print $2}'
         ) || fp="Fingerprint indisponível"
 
-        printf "\n[%d] %s\n" "$((i+1))" "${keys[$i]%% *}"
+        printf "[%d] %s\n" "$((i + 1))" "${keys[$i]%% *}"
         printf "    Fingerprint: %s\n" "${fp:-Indisponível}"
-        printf "    Comentário: %s\n" \
+        printf "    Comentário: %s\n\n" \
             "$(awk '{$1=""; $2=""; sub(/^[[:space:]]+/, ""); print}' <<< "${keys[$i]}")"
     done
 
-    echo
-    read -r -p "Digite o número da chave que deseja apagar (0 cancela): " choice
+    read -r -p "Número da chave para apagar (0 cancela): " choice
 
     if [[ "$choice" == "0" ]]; then
         echo "Operação cancelada."
+        pausar
         return
     fi
 
     if [[ ! "$choice" =~ ^[0-9]+$ ]] ||
        (( choice < 1 || choice > count )); then
         echo "ERRO: número inválido."
+        pausar
         return
     fi
 
     echo
     echo "Chave selecionada:"
-    printf '%s\n' "${keys[$((choice-1))]}"
+    printf '%s\n' "${keys[$((choice - 1))]}"
     echo
-    read -r -p "Confirma a exclusão? Digite SIM para confirmar: " confirm
+
+    read -r -p "Digite SIM para confirmar a exclusão: " confirm
 
     if [[ "$confirm" != "SIM" ]]; then
         echo "Operação cancelada."
+        pausar
         return
     fi
 
-    # Cria backup antes de alterar o arquivo.
+    # Cria backup antes de modificar o arquivo.
     cp -p "$AUTHORIZED_KEYS" \
         "$AUTHORIZED_KEYS.backup.$(date +%Y%m%d-%H%M%S)"
 
-    # Reescreve o arquivo sem a chave escolhida.
-    local tmp
+    # Cria arquivo temporário seguro.
     tmp=$(mktemp "$SSH_DIR/authorized_keys.XXXXXX")
     chmod 600 "$tmp"
     chown root:root "$tmp"
 
-    local current=0
+    current=0
+
     for line in "${keys[@]}"; do
         current=$((current + 1))
+
         if (( current != choice )); then
             printf '%s\n' "$line" >> "$tmp"
         fi
     done
 
+    # Substitui o arquivo mantendo suas permissões.
     cat "$tmp" > "$AUTHORIZED_KEYS"
     rm -f "$tmp"
+
     chown root:root "$AUTHORIZED_KEYS"
     chmod 600 "$AUTHORIZED_KEYS"
 
-    echo "Chave removida de authorized_keys."
+    echo
+    echo "Chave removida com sucesso."
     echo "Backup criado antes da alteração."
-    echo "Se essa era sua única chave de acesso, você poderá perder o acesso SSH por chave."
+    echo
+    echo "ATENÇÃO: se essa era sua única chave de acesso,"
+    echo "você poderá perder o acesso SSH por chave."
+
+    pausar
 }
 
 # Menu principal.
 while true; do
-    echo
+    limpar_tela
+
     echo "======================================"
-    echo "   GERENCIADOR DE CHAVES SSH - ROOT"
+    echo "    GERENCIADOR DE CHAVES SSH - ROOT"
     echo "======================================"
     echo "1) Cadastrar chave pública"
     echo "2) Listar chaves cadastradas"
     echo "3) Apagar chave por número"
     echo "0) Sair"
     echo "======================================"
+    echo
 
     read -r -p "Escolha uma opção: " option
 
     case "$option" in
-        1) cadastrar_chave ;;
-        2) listar_chaves ;;
-        3) apagar_chave ;;
+        1)
+            cadastrar_chave
+            ;;
+        2)
+            listar_chaves
+            ;;
+        3)
+            apagar_chave
+            ;;
         0)
-            echo "Encerrando."
+            limpar_tela
+            echo "Encerrando o gerenciador de chaves SSH."
             exit 0
             ;;
         *)
+            echo
             echo "Opção inválida."
+            pausar
             ;;
     esac
 done
