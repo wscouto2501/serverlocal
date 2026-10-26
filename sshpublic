@@ -185,7 +185,6 @@ apagar_chave() {
 
 # Menu principal.
 while true; do
-    clear
     echo
     echo "======================================"
     echo "   GERENCIADOR DE CHAVES SSH - ROOT"
