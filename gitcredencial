@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+clear
+# ============================================================
+# Configurador global de credenciais do GitHub para o root
+# Compatível com Ubuntu e Debian
+# ============================================================
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "ERRO: execute este script como root."
+    echo "Exemplo: sudo bash configurar-github.sh"
+    exit 1
+fi
+
+GIT_CONFIG="/root/.gitconfig"
+CREDENTIALS="/root/.git-credentials"
+SSH_DIR="/root/.ssh"
+
+cleanup() {
+    unset GH_TOKEN GH_USER 2>/dev/null || true
+}
+trap cleanup EXIT
+
+echo
+echo "=============================================="
+echo " CONFIGURAR GITHUB NO SERVIDOR LINUX"
+echo "=============================================="
+echo
+
+# Verifica dependências
+if ! command -v git >/dev/null 2>&1; then
+    echo "ERRO: Git não está instalado."
+    echo "Instale com: apt update && apt install -y git"
+    exit 1
+fi
+
+# Prepara o diretório SSH
+install -d -m 700 "$SSH_DIR"
+
+# Cria o arquivo de credenciais com permissão restrita,
+# sem destruir credenciais existentes antes da confirmação.
+if [[ ! -f "$CREDENTIALS" ]]; then
+    install -m 600 /dev/null "$CREDENTIALS"
+fi
+
+chmod 600 "$CREDENTIALS"
+touch "$GIT_CONFIG"
+chmod 600 "$GIT_CONFIG"
+
+echo "Informe suas credenciais do GitHub."
+echo
+
+read -rp "Usuário do GitHub: " GH_USER
+
+if [[ -z "$GH_USER" ]]; then
+    echo "ERRO: o usuário não pode ficar vazio."
+    exit 1
+fi
+
+read -rsp "Cole seu Personal Access Token: " GH_TOKEN
+echo
+
+if [[ -z "$GH_TOKEN" ]]; then
+    echo "ERRO: o token não pode ficar vazio."
+    exit 1
+fi
+
+# Rejeita caracteres que poderiam quebrar a URL de credenciais.
+if [[ "$GH_USER" == *[:/@[:space:]]* ||
+      "$GH_TOKEN" == *[:/@[:space:]]* ]]; then
+    echo "ERRO: usuário ou token contém caracteres incompatíveis"
+    echo "com este formato de URL de credenciais."
+    exit 1
+fi
+
+# Monta a credencial em arquivo temporário protegido.
+# Não imprime o token no terminal.
+TEMP_FILE="$(mktemp /root/.git-credentials.XXXXXX)"
+chmod 600 "$TEMP_FILE"
+
+printf 'https://%s:%s@github.com\n' \
+    "$GH_USER" "$GH_TOKEN" > "$TEMP_FILE"
+
+# Preserva outras credenciais existentes e substitui apenas
+# a entrada HTTPS do GitHub.
+if [[ -s "$CREDENTIALS" ]]; then
+    grep -vE '^https?://([^/@]+@)?github\.com([/:]|$)' \
+        "$CREDENTIALS" > "${TEMP_FILE}.old" || true
+    cat "${TEMP_FILE}.old" >> "$TEMP_FILE"
+    rm -f "${TEMP_FILE}.old"
+fi
+
+install -m 600 "$TEMP_FILE" "$CREDENTIALS"
+rm -f "$TEMP_FILE"
+
+# Configura o helper global do Git para o root.
+git config --global --replace-all credential.helper \
+    "store --file=$CREDENTIALS"
+
+# Remove possíveis helpers anteriores para evitar conflitos.
+# A configuração global acima passa a ser a configuração ativa.
+chmod 600 "$GIT_CONFIG" "$CREDENTIALS"
+
+cleanup
+
+echo
+echo "=============================================="
+echo " CONFIGURAÇÃO CONCLUÍDA"
+echo "=============================================="
+echo
+echo "Arquivo de credenciais: $CREDENTIALS"
+echo "Configuração Git:       $GIT_CONFIG"
+echo "Permissões:             600"
+echo
+echo "Helper configurado:"
+git config --global --get credential.helper
+echo
+echo "Agora você pode executar, em repositórios HTTPS:"
+echo "  git pull"
+echo "  git push"
+echo
+echo "Teste a autenticação no GitHub:"
+echo "  git ls-remote https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git"
+echo
+echo "OBSERVAÇÃO: o token é armazenado em texto puro no arquivo"
+echo "de credenciais. Mantenha o acesso ao root protegido."
