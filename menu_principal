@@ -29,11 +29,12 @@ while true; do
     echo "15) configurar SSH + root"
     echo "16) Gerar chave publica para conectar sem senha."
     echo "17) Adicionar chave publica para conectar sem senha."
+    echo "18) Adicionar chave do Github para acesso sem senha"
     echo "======================================"
-    echo "18) Instalar o LogPose (Gerenciador de Utms)"
-    echo "19) Instalar Coolfy(plataforma de gerenciamento de aplicações)."
-    echo "20) Instalar CRM Vocero(plataforma de gerenciamento de cliente pelo Whatsapp)."
-    echo "21) Instalar Instalar o Codex para editar codigo com OpenAI."
+    echo "19) Instalar o LogPose (Gerenciador de Utms)"
+    echo "20) Instalar Coolfy(plataforma de gerenciamento de aplicações)."
+    echo "21) Instalar CRM Vocero(plataforma de gerenciamento de cliente pelo Whatsapp)."
+    echo "22) Instalar Instalar o Codex para editar codigo com OpenAI."
 
     echo " 0) Sair"
     echo ""
@@ -130,18 +131,22 @@ while true; do
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/sshpublic)
            ;;
         18)
+           echo "Adicionando chave Github para acesso sem senha"
+           bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/gitcredencial)
+           ;;
+        19)
            echo "Executando configuração SSH"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/logpose)
            ;;
-        19)
+        20)
            echo "Executando Instalação do Coolify."
            bash <(curl -fsSL https://cdn.coollabs.io/coolify/install.sh)
            ;;
-        20)
+        21)
            echo "Executando Instalação do CRM Vocero"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/crmvocero)
            ;;
-        21)
+        22)
            echo "Executando Instalação do Codex da OpenAI"
            bash <(curl -fsSL https://raw.githubusercontent.com/wscouto2501/serverlocal/main/codex)
            ;;
