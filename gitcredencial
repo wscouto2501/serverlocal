@@ -28,12 +28,28 @@ echo " CONFIGURAR GITHUB NO SERVIDOR LINUX"
 echo "=============================================="
 echo
 
-# Verifica dependências
+# Verifica se o Git está instalado e instala se necessário
 if ! command -v git >/dev/null 2>&1; then
-    echo "ERRO: Git não está instalado."
-    echo "Instale com: apt update && apt install -y git"
-    exit 1
+    echo "Git não encontrado. Instalando..."
+
+    if ! command -v apt-get >/dev/null 2>&1; then
+        echo "ERRO: apt-get não está disponível neste Linux."
+        exit 1
+    fi
+
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y git
+
+    if ! command -v git >/dev/null 2>&1; then
+        echo "ERRO: não foi possível instalar o Git."
+        exit 1
+    fi
+
+    echo "Git instalado com sucesso!"
+else
+    echo "Git já está instalado: $(git --version)"
 fi
+
 
 # Prepara o diretório SSH
 install -d -m 700 "$SSH_DIR"
