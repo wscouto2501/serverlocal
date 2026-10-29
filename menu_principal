@@ -28,7 +28,7 @@ while true; do
     echo "======================================"
     echo "15) configurar SSH + root"
     echo "16) Gerar chave publica para conectar sem senha."
-    echo "17) Adicionar chave publica para conectar sem senha."
+    echo "17) Adicionar chave publica SSH para conectar sem senha."
     echo "18) Adicionar chave do Github para acesso sem senha"
     echo "======================================"
     echo "19) Instalar o LogPose (Gerenciador de Utms)"
