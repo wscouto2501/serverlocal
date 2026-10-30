@@ -8,7 +8,7 @@ set -Eeuo pipefail
 # ==========================================================
 clear
 
-REPO_URL="https://github.com/wscouto2501/vocero-crm.git"
+
 INSTALL_DIR="/opt/vocero"
 
 log()  { echo -e "\n\033[1;32m[INFO]\033[0m $*"; }
@@ -42,6 +42,55 @@ DOMAIN="${DOMAIN,,}"
 if [[ ! "$DOMAIN" =~ ^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$ ]]; then
     die "Domínio inválido. Informe um domínio completo, sem https:// ou caminhos."
 fi
+
+
+
+# ==============================================
+# INSTALADOR VOCERO CRM
+# 1 - Original
+# 2 - Modificada
+# ==============================================
+
+REPO_ORIGINAL="https://github.com/kevinrivm/vocero-crm.git"
+REPO_MODIFICADA="https://github.com/wscouto2501/vocero-crm.git"
+
+echo ""
+echo "=============================================="
+echo "          INSTALADOR VOCERO CRM"
+echo "=============================================="
+echo ""
+echo "Escolha qual versão deseja instalar:"
+echo ""
+echo "  1) Vocero CRM ORIGINAL"
+echo "     Repositório: kevinrivm/vocero-crm"
+echo ""
+echo "  2) Vocero CRM MODIFICADO"
+echo "     Repositório: wscouto2501/vocero-crm"
+echo ""
+echo "=============================================="
+
+while true; do
+    read -rp "Digite 1 ou 2: " OPCAO
+
+    case "$OPCAO" in
+        1)
+            REPO_URL="$REPO_ORIGINAL"
+            VERSAO="ORIGINAL"
+            break
+            ;;
+        2)
+            REPO_URL="$REPO_MODIFICADA"
+            VERSAO="MODIFICADA"
+            break
+            ;;
+        *)
+            echo "Opção inválida. Escolha 1 ou 2."
+            ;;
+    esac
+done
+
+
+
 
 # 3. Atualizar sistema e instalar ferramentas básicas
 log "Atualizando pacotes do sistema..."
