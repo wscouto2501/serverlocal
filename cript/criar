@@ -679,7 +679,8 @@ echo "EXECUTANDO TESTES..."
 npx hardhat test
 
 
-
+cat > readme.sh <<'EOF'
+#!/bin/bash
 echo
 echo "Próxima etapa:"
 echo
@@ -703,3 +704,24 @@ echo "13. Execute: npm run deploy:polygon"
 echo "com isto criou o contrato no entanto não deixou publico para compra/venda ainda, insira o comando abaixo para deixar publico."
 echo "./publicar_carteira.sh"
 
+echo ""
+echo ""
+echo ""
+
+echo "🛠️ Passo a passo na QuickSwap colocar para compra/venda (Polygon)"
+echo "Vou usar como exemplo a criação de um par com USDC, que é uma stablecoin e ajuda a definir um preço mais estável para o seu token."
+echo ""
+echo "1. Acesse e conecte a carteira: Vá ao site da QuickSwap (https://quickswap.exchange) e conecte a sua MetaMask. Certifique-se de que a rede selecionada na carteira é a Polygon."
+echo "2. Vá para a área de Liquidez: No menu principal, clique em \"Pool\" (ou \"Liquidez\")."
+echo ""
+echo "3. Inicie a criação do par: Clique no botão \"Create a pair\" ou \"Create a pool\" (ou \"Novo Posição\" / \"New Position\" / \"\" dependendo da versão da interface)."
+echo "4. Selecione os tokens:"
+echo "   - No primeiro campo, selecione o token de referência (ex: USDC)."
+echo "   - No segundo campo, cole o endereço do contrato do seu token recém-criado. A QuickSwap vai buscá-lo automaticamente."
+echo ""
+echo "5. Defina o preço inicial: Como o seu token é novo, você precisará definir o preço inicial em relação ao outro token. Por exemplo, se quiser que 1 seu token valha 0.10 USDC, insira essa proporção. A interface geralmente pede para você inserir a quantidade de um dos tokens e ela calcula o outro."
+echo "6. Insira os valores e aprove: Digite a quantidade de liquidez que deseja depositar. Você precisará de uma quantidade equivalente em valor dos dois tokens (ex: se depositar 1000 USDC, precisará de 10.000 do seu token, seguindo o preço de 0.10). Clique em \"Approve\" (Aprovar) para cada token e confirme na MetaMask."
+echo "7. Confirme a criação: Após a aprovação, clique no botão final (\"Supply\" ou \"Add Liquidity\") e confirme a transação na sua carteira. Pronto, o pool está criado e o token já pode ser negociado."
+EOF
+chmod +x readme.sh
+./readme.sh
