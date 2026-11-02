@@ -276,6 +276,125 @@ artifacts/
 coverage/
 EOF
 
+
+
+
+
+
+
+cat > /root/moeda/verificar_carteira.sh <<'EOF'
+#!/bin/bash
+
+set -e
+
+cd /root/moeda
+
+echo "======================================"
+echo "   VERIFICANDO CARTEIRA REALUNIT"
+echo "======================================"
+
+if [ ! -f .env ]; then
+    echo "ERRO: arquivo .env não encontrado."
+    exit 1
+fi
+
+if [ ! -d node_modules/ethers ]; then
+    echo "ERRO: ethers não instalado."
+    exit 1
+fi
+
+if [ ! -d node_modules/dotenv ]; then
+    echo "ERRO: dotenv não instalado."
+    exit 1
+fi
+
+if ! grep -q '^RPC_URL=.' .env; then
+    echo "ERRO: RPC_URL não configurada."
+    exit 1
+fi
+
+if ! grep -q '^PRIVATE_KEY=.' .env; then
+    echo "ERRO: PRIVATE_KEY não configurada."
+    exit 1
+fi
+
+echo
+echo "Consultando blockchain Polygon..."
+echo
+
+node <<'NODE'
+require("dotenv").config();
+
+const {
+    JsonRpcProvider,
+    Wallet,
+    formatEther
+} = require("ethers");
+
+async function main() {
+    const rpc = process.env.RPC_URL;
+    const privateKey = process.env.PRIVATE_KEY;
+
+    if (!rpc || !privateKey) {
+        throw new Error("RPC_URL ou PRIVATE_KEY não configurada.");
+    }
+
+    const provider = new JsonRpcProvider(rpc);
+    const network = await provider.getNetwork();
+
+    if (network.chainId !== 137n) {
+        throw new Error(
+            `Rede incorreta! Chain ID encontrado: ${network.chainId}`
+        );
+    }
+
+    const wallet = new Wallet(privateKey);
+    const balance = await provider.getBalance(wallet.address);
+
+    console.log("======================================");
+    console.log("         RESULTADO DA VERIFICAÇÃO");
+    console.log("======================================");
+
+    console.log("Rede: Polygon Mainnet");
+    console.log("Chain ID:", network.chainId.toString());
+    console.log("Carteira:", wallet.address);
+    console.log("Saldo POL:", formatEther(balance));
+
+    console.log("======================================");
+
+    if (balance === 0n) {
+        console.log("ATENÇÃO: Carteira sem POL.");
+    } else {
+        console.log("Carteira possui POL.");
+        console.log("Verificação concluída!");
+    }
+}
+
+main().catch(error => {
+    console.error("\nERRO:", error.message);
+    process.exitCode = 1;
+});
+NODE
+EOF
+
+chmod +x /root/moeda/verificar_carteira.sh
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 echo
 echo "=========================================="
 echo "INSTALANDO DEPENDÊNCIAS"
@@ -312,11 +431,28 @@ echo
 echo "Arquivos criados:"
 find contracts scripts test deployments -maxdepth 2 -type f
 
+clear
 echo
 echo "Próxima etapa:"
-echo "1. Configure a PRIVATE_KEY no arquivo .env"
-echo "2. Garanta que a carteira tenha POL para gas"
-echo "3. Execute: npm run deploy:polygon"
+echo
+echo "
+
+echo "1. Abra a extensão MetaMask no Chrome. Clique no ícone da raposa ou no menu de extensões (ícone de quebra-cabeça)."
+echo "2. link para extensão https://chromewebstore.google.com/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn"
+echo "3. crie a conta e uma senha ou importe uma carteira existente e desbloqueie sua carteira."
+echo "========================================================================================================================"
+echo "4. Clique no seletor de contas, onde aparece o nome da sua conta."
+echo "5. Clique nos três pontinhos ao lado da conta desejada."
+echo "6. Selecione Detalhes da conta (Account details)."
+echo "7. Clique em Mostrar chave privada (Show private key)."
+echo "8. Digite a senha da MetaMask."
+echo "9. Pressione e segure Hold to reveal Private Key para revelar a chave"
+echo "========================================================================================================================"
+echo "10. Configure a PRIVATE_KEY no arquivo .env"
+echo "11. teste e verifique se tem saldo na carteira Polygon com o comando abaixo"
+echo "./verificar_carteira.sh"
+echo "12. Garanta que a carteira tenha POL para gas"
+echo "13. Execute: npm run deploy:polygon"
 
 echo
 echo "ATENÇÃO: A implantação será na Polygon Mainnet."
