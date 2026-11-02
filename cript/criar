@@ -700,12 +700,8 @@ echo "11. teste e verifique se tem saldo na carteira Polygon com o comando abaix
 echo "./verificar_carteira.sh"
 echo "12. Garanta que a carteira tenha POL para gas"
 echo "13. Execute: npm run deploy:polygon"
-echo "com isto criou o contrato no entanto não deixou publico para compra/venda ainda, insira o comando abaixo para deixar publico."
-echo "./publicar_carteira.sh"
+echo "com isto criou o contrato, no entanto não deixou publico para compra/venda ainda"
 
-
-echo ""
-echo ""
 echo ""
 
 echo "🛠️ Passo a passo na QuickSwap colocar para compra/venda (Polygon)"
@@ -724,7 +720,7 @@ echo "6. Insira os valores e aprove: Digite a quantidade de liquidez que deseja 
 echo "7. Confirme a criação: Após a aprovação, clique no botão final (\"Supply\" ou \"Add Liquidity\") e confirme a transação na sua carteira. Pronto, o pool está criado e o token já pode ser negociado."
 echo
 echo
-echo "digite ./readme.sh para ler estas instruções novamente.
+echo "digite ./readme.sh para ler estas instruções novamente."
 EOF
 chmod +x readme.sh
 ./readme.sh
