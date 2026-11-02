@@ -1,0 +1,94 @@
+#!/bin/bash
+
+set -e
+
+cd /root/moeda
+
+echo "======================================"
+echo "   VERIFICANDO CARTEIRA REALUNIT"
+echo "======================================"
+
+# Verificar arquivos
+if [ ! -f .env ]; then
+    echo "ERRO: arquivo .env não encontrado."
+    exit 1
+fi
+
+if [ ! -d node_modules/ethers ]; then
+    echo "ERRO: ethers não instalado."
+    exit 1
+fi
+
+if [ ! -d node_modules/dotenv ]; then
+    echo "ERRO: dotenv não instalado."
+    exit 1
+fi
+
+# Verificar variáveis
+if ! grep -q '^RPC_URL=.' .env; then
+    echo "ERRO: RPC_URL não configurada."
+    exit 1
+fi
+
+if ! grep -q '^PRIVATE_KEY=.' .env; then
+    echo "ERRO: PRIVATE_KEY não configurada."
+    exit 1
+fi
+
+echo
+echo "Consultando blockchain Polygon..."
+echo
+
+node <<'NODE'
+require("dotenv").config();
+
+const {
+    JsonRpcProvider,
+    Wallet,
+    formatEther
+} = require("ethers");
+
+async function main() {
+    const rpc = process.env.RPC_URL;
+    const privateKey = process.env.PRIVATE_KEY;
+
+    if (!rpc || !privateKey) {
+        throw new Error("RPC_URL ou PRIVATE_KEY não configurada.");
+    }
+
+    const provider = new JsonRpcProvider(rpc);
+    const network = await provider.getNetwork();
+
+    if (network.chainId !== 137n) {
+        throw new Error(
+            `Rede incorreta! Chain ID encontrado: ${network.chainId}`
+        );
+    }
+
+    const wallet = new Wallet(privateKey);
+    const balance = await provider.getBalance(wallet.address);
+
+    console.log("======================================");
+    console.log("         RESULTADO DA VERIFICAÇÃO");
+    console.log("======================================");
+
+    console.log("Rede: Polygon Mainnet");
+    console.log("Chain ID:", network.chainId.toString());
+    console.log("Carteira:", wallet.address);
+    console.log("Saldo POL:", formatEther(balance));
+
+    console.log("======================================");
+
+    if (balance === 0n) {
+        console.log("ATENÇÃO: Carteira sem POL.");
+    } else {
+        console.log("Carteira possui POL.");
+        console.log("Verificação concluída!");
+    }
+}
+
+main().catch(error => {
+    console.error("\nERRO:", error.message);
+    process.exitCode = 1;
+});
+NODE
