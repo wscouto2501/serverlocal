@@ -252,7 +252,7 @@ EOF
 # Arquivo .env: preservar se já existir
 if [ ! -f .env ]; then
   cat > .env <<'EOF'
-RPC_URL=https://polygon-rpc.com
+RPC_URL=https://polygon-bor-rpc.publicnode.com
 PRIVATE_KEY=
 EOF
   chmod 600 .env
