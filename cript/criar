@@ -1,0 +1,296 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+echo "=========================================="
+echo "       INSTALANDO REALUNIT - POLYGON"
+echo "=========================================="
+
+# Diretório fixo do projeto
+PROJECT_DIR="/root/moeda"
+mkdir -p "$PROJECT_DIR"
+cd "$PROJECT_DIR"
+
+echo "Diretório: $(pwd)"
+
+# Verificar Node.js e npm
+if ! command -v node >/dev/null 2>&1; then
+    echo "ERRO: Node.js não encontrado."
+    exit 1
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+    echo "ERRO: npm não encontrado."
+    exit 1
+fi
+
+echo "Node: $(node -v)"
+echo "NPM: $(npm -v)"
+
+# Criar estrutura
+mkdir -p contracts scripts test deployments
+
+# package.json
+cat > package.json <<'EOF'
+{
+  "name": "realunit-polygon",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Token RealUnit ERC20 na Polygon",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:polygon": "hardhat run scripts/deploy.js --network polygon"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "5.0.0",
+    "dotenv": "16.4.5",
+    "hardhat": "2.28.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.0.2",
+    "ethers": "^6.13.0"
+  }
+}
+EOF
+
+# Contrato ERC20
+cat > contracts/MeuToken.sol <<'EOF'
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+
+contract MeuToken is ERC20 {
+    constructor() ERC20("RealUnit", "RUT") {
+        _mint(msg.sender, 10_000_000 * 10 ** decimals());
+    }
+}
+EOF
+
+# Configuração Hardhat
+cat > hardhat.config.js <<'EOF'
+require("@nomicfoundation/hardhat-toolbox");
+require("dotenv").config();
+
+const config = {
+  solidity: {
+    version: "0.8.20",
+    settings: {
+      optimizer: {
+        enabled: true,
+        runs: 200
+      }
+    }
+  },
+  networks: {}
+};
+
+if (process.env.RPC_URL) {
+  config.networks.polygon = {
+    url: process.env.RPC_URL,
+    chainId: 137,
+    accounts: process.env.PRIVATE_KEY
+      ? [process.env.PRIVATE_KEY]
+      : []
+  };
+}
+
+module.exports = config;
+EOF
+
+# Script de implantação
+cat > scripts/deploy.js <<'EOF'
+const hre = require("hardhat");
+const fs = require("fs");
+const path = require("path");
+
+async function main() {
+  if (!process.env.PRIVATE_KEY) {
+    throw new Error("PRIVATE_KEY não configurada no arquivo .env");
+  }
+
+  const network = await hre.ethers.provider.getNetwork();
+
+  if (network.chainId !== 137n) {
+    throw new Error(
+      `Rede incorreta. Chain ID encontrado: ${network.chainId}. Esperado: 137.`
+    );
+  }
+
+  const [deployer] = await hre.ethers.getSigners();
+
+  const balance = await hre.ethers.provider.getBalance(deployer.address);
+
+  console.log("====================================");
+  console.log("PUBLICANDO REALUNIT NA POLYGON");
+  console.log("====================================");
+  console.log("Carteira:", deployer.address);
+  console.log("Saldo POL:", hre.ethers.formatEther(balance));
+
+  if (balance === 0n) {
+    throw new Error("A carteira não possui POL para pagar o gas.");
+  }
+
+  const MeuToken = await hre.ethers.getContractFactory("MeuToken");
+
+  console.log("Enviando contrato para a Polygon...");
+
+  const token = await MeuToken.deploy();
+
+  await token.waitForDeployment();
+
+  const address = await token.getAddress();
+  const tx = token.deploymentTransaction();
+
+  const result = {
+    network: "Polygon Mainnet",
+    chainId: 137,
+    name: await token.name(),
+    symbol: await token.symbol(),
+    totalSupply: (await token.totalSupply()).toString(),
+    decimals: Number(await token.decimals()),
+    contractAddress: address,
+    deployer: deployer.address,
+    transactionHash: tx.hash,
+    explorer: `https://polygonscan.com/address/${address}`,
+    deployedAt: new Date().toISOString()
+  };
+
+  const output = path.join(__dirname, "../deployments/polygon.json");
+
+  fs.writeFileSync(output, JSON.stringify(result, null, 2));
+
+  console.log("====================================");
+  console.log("TOKEN PUBLICADO COM SUCESSO!");
+  console.log("====================================");
+  console.log(JSON.stringify(result, null, 2));
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
+EOF
+
+# Testes
+cat > test/MeuToken.js <<'EOF'
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("RealUnit (RUT)", function () {
+  async function deployToken() {
+    const [owner, other] = await ethers.getSigners();
+
+    const MeuToken = await ethers.getContractFactory("MeuToken");
+    const token = await MeuToken.deploy();
+
+    await token.waitForDeployment();
+
+    return { token, owner, other };
+  }
+
+  it("Deve ter o nome e símbolo corretos", async function () {
+    const { token } = await deployToken();
+
+    expect(await token.name()).to.equal("RealUnit");
+    expect(await token.symbol()).to.equal("RUT");
+  });
+
+  it("Deve emitir 10 milhões de tokens", async function () {
+    const { token, owner } = await deployToken();
+
+    const supply = ethers.parseUnits("10000000", 18);
+
+    expect(await token.totalSupply()).to.equal(supply);
+    expect(await token.balanceOf(owner.address)).to.equal(supply);
+  });
+
+  it("Deve permitir transferências", async function () {
+    const { token, other } = await deployToken();
+
+    await token.transfer(other.address, ethers.parseUnits("100", 18));
+
+    expect(await token.balanceOf(other.address)).to.equal(
+      ethers.parseUnits("100", 18)
+    );
+  });
+
+  it("Deve utilizar 18 casas decimais", async function () {
+    const { token } = await deployToken();
+
+    expect(await token.decimals()).to.equal(18);
+  });
+});
+EOF
+
+# Arquivo .env: preservar se já existir
+if [ ! -f .env ]; then
+  cat > .env <<'EOF'
+RPC_URL=https://polygon-rpc.com
+PRIVATE_KEY=
+EOF
+  chmod 600 .env
+  echo "Arquivo .env criado."
+else
+  echo "Arquivo .env existente preservado."
+fi
+
+# Exemplo de configuração
+cat > .env.example <<'EOF'
+RPC_URL=https://polygon-rpc.com
+PRIVATE_KEY=
+EOF
+
+# Gitignore
+cat > .gitignore <<'EOF'
+node_modules/
+.env
+cache/
+artifacts/
+coverage/
+EOF
+
+echo
+echo "=========================================="
+echo "INSTALANDO DEPENDÊNCIAS"
+echo "=========================================="
+
+npm install \
+  --fetch-retries=5 \
+  --fetch-retry-mintimeout=20000 \
+  --fetch-retry-maxtimeout=120000 \
+  --fetch-timeout=300000
+
+echo
+echo "=========================================="
+echo "COMPILANDO CONTRATO"
+echo "=========================================="
+
+npx hardhat compile
+
+echo
+echo "=========================================="
+echo "EXECUTANDO TESTES"
+echo "=========================================="
+
+npx hardhat test
+
+echo
+echo "=========================================="
+echo "INSTALAÇÃO CONCLUÍDA"
+echo "=========================================="
+
+echo "Projeto: $PROJECT_DIR"
+
+echo
+echo "Arquivos criados:"
+find contracts scripts test deployments -maxdepth 2 -type f
+
+echo
+echo "Próxima etapa:"
+echo "1. Configure a PRIVATE_KEY no arquivo .env"
+echo "2. Garanta que a carteira tenha POL para gas"
+echo "3. Execute: npm run deploy:polygon"
+
+echo
+echo "ATENÇÃO: A implantação será na Polygon Mainnet."
