@@ -704,6 +704,7 @@ echo "13. Execute: npm run deploy:polygon"
 echo "com isto criou o contrato no entanto não deixou publico para compra/venda ainda, insira o comando abaixo para deixar publico."
 echo "./publicar_carteira.sh"
 
+
 echo ""
 echo ""
 echo ""
@@ -722,6 +723,9 @@ echo ""
 echo "5. Defina o preço inicial: Como o seu token é novo, você precisará definir o preço inicial em relação ao outro token. Por exemplo, se quiser que 1 seu token valha 0.10 USDC, insira essa proporção. A interface geralmente pede para você inserir a quantidade de um dos tokens e ela calcula o outro."
 echo "6. Insira os valores e aprove: Digite a quantidade de liquidez que deseja depositar. Você precisará de uma quantidade equivalente em valor dos dois tokens (ex: se depositar 1000 USDC, precisará de 10.000 do seu token, seguindo o preço de 0.10). Clique em \"Approve\" (Aprovar) para cada token e confirme na MetaMask."
 echo "7. Confirme a criação: Após a aprovação, clique no botão final (\"Supply\" ou \"Add Liquidity\") e confirme a transação na sua carteira. Pronto, o pool está criado e o token já pode ser negociado."
+echo
+echo
+echo "digite ./readme.sh para ler estas instruções novamente.
 EOF
 chmod +x readme.sh
 ./readme.sh
