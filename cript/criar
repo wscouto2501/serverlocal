@@ -526,8 +526,6 @@ npx hardhat test
 
 
 
-
-
 echo
 echo "Próxima etapa:"
 echo
@@ -548,39 +546,6 @@ echo "11. teste e verifique se tem saldo na carteira Polygon com o comando abaix
 echo "./verificar_carteira.sh"
 echo "12. Garanta que a carteira tenha POL para gas"
 echo "13. Execute: npm run deploy:polygon"
+echo "com isto criou o contrato no entanto não deixou publico para compra/venda ainda, insira o comando abaixo para deixar publico."
+echo "./publicar_carteira.sh"
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-echo
-echo "=========================================="
-echo "INSTALACAO CONCLUIDA"
-echo "=========================================="
-echo "Projeto: $PROJECT_DIR"
-echo
-echo "Proximos passos:"
-echo "1. Edite /root/moeda/.env e configure sua RPC_URL."
-echo "2. Configure PRIVATE_KEY com a chave da carteira que implantara o contrato."
-echo "3. Nunca compartilhe sua chave privada nem envie o arquivo .env."
-echo "4. Execute: cd /root/moeda && ./verificar_carteira.sh"
-echo "5. Garanta que a carteira tenha POL para pagar o gas."
-echo "6. Revise .token-config.json."
-echo "7. Para publicar na Polygon Mainnet: npm run deploy:polygon"
-echo
-echo "ATENCAO: o comando de implantacao envia uma transacao real e consome POL."
