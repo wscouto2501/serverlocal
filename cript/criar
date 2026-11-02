@@ -1,6 +1,32 @@
 #!/bin/bash
 set -Eeuo pipefail
 
+
+
+# ==================================================
+# INSTALAR NODE.JS 20 AUTOMATICAMENTE
+# ==================================================
+
+if ! command -v node >/dev/null 2>&1 || \
+   ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
+
+    echo "Node.js 20 não encontrado. Instalando..."
+
+    apt-get update
+    apt-get install -y ca-certificates curl
+
+    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+    bash /tmp/nodesource_setup.sh
+
+    apt-get install -y nodejs
+    rm -f /tmp/nodesource_setup.sh
+fi
+
+echo "Node.js: $(node -v)"
+echo "NPM: $(npm -v)"
+
+
+
 echo "=========================================="
 echo "       INSTALANDO REALUNIT - POLYGON"
 echo "=========================================="
