@@ -527,7 +527,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 
 # ---------------- Variáveis de ambiente / diretórios ----------------
-PROJECT_DIR="${PROJECT_DIR:-/opt/realunit}"
+PROJECT_DIR="__PROJECT_DIR__"
 BUILD_DIR="${PROJECT_DIR}/build"
 LOG_DIR="${PROJECT_DIR}/logs"
 mkdir -p "${BUILD_DIR}" "${LOG_DIR}"
