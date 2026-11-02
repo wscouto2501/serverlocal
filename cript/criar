@@ -463,7 +463,6 @@ EOF
 cat > verificar_carteira.sh <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
-cd /root/moeda
 
 if [[ ! -f .env ]]; then
   echo "ERRO: .env nao encontrado."
