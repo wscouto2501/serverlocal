@@ -524,6 +524,50 @@ echo
 echo "EXECUTANDO TESTES..."
 npx hardhat test
 
+
+
+
+
+echo
+echo "Próxima etapa:"
+echo
+
+echo "1. Abra a extensão MetaMask no Chrome. Clique no ícone da raposa ou no menu de extensões (ícone de quebra-cabeça)."
+echo "2. link para extensão https://chromewebstore.google.com/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn"
+echo "3. crie a conta e uma senha ou importe uma carteira existente e desbloqueie sua carteira."
+echo "========================================================================================================================"
+echo "4. Clique no seletor de contas, onde aparece o nome da sua conta."
+echo "5. Clique nos três pontinhos ao lado da conta desejada."
+echo "6. Selecione Detalhes da conta (Account details)."
+echo "7. Clique em Mostrar chave privada (Show private key)."
+echo "8. Digite a senha da MetaMask."
+echo "9. Pressione e segure Hold to reveal Private Key para revelar a chave"
+echo "========================================================================================================================"
+echo "10. Configure a PRIVATE_KEY no arquivo .env"
+echo "11. teste e verifique se tem saldo na carteira Polygon com o comando abaixo"
+echo "./verificar_carteira.sh"
+echo "12. Garanta que a carteira tenha POL para gas"
+echo "13. Execute: npm run deploy:polygon"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 echo
 echo "=========================================="
 echo "INSTALACAO CONCLUIDA"
