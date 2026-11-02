@@ -1,67 +1,184 @@
 #!/bin/bash
 set -Eeuo pipefail
 
+# ============================================================
+# REALUNIT / TOKEN PERSONALIZADO - POLYGON
+# Este instalador solicita os dados do token antes de compilar.
+# ============================================================
 
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Execute como root: sudo bash instalar_moeda.sh"
+  exit 1
+fi
 
-# ==================================================
-# INSTALAR NODE.JS 20 AUTOMATICAMENTE
-# ==================================================
-
+# ---------------- Node.js 20+ ----------------
 if ! command -v node >/dev/null 2>&1 || \
    ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
-
-    echo "Node.js 20 não encontrado. Instalando..."
-
-    apt-get update
-    apt-get install -y ca-certificates curl
-
-    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
-    bash /tmp/nodesource_setup.sh
-
-    apt-get install -y nodejs
-    rm -f /tmp/nodesource_setup.sh
+  echo "Instalando Node.js 20..."
+  apt-get update
+  apt-get install -y ca-certificates curl
+  curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+  bash /tmp/nodesource_setup.sh
+  apt-get install -y nodejs
+  rm -f /tmp/nodesource_setup.sh
 fi
 
 echo "Node.js: $(node -v)"
 echo "NPM: $(npm -v)"
 
+echo
+echo "=================================================="
+echo "       CONFIGURAÇÃO DA SUA CRIPTOMOEDA"
+echo "=================================================="
+echo "Preencha os dados. A implantação só ocorrerá"
+echo "posteriormente, quando você executar o comando."
+echo
 
 
-echo "=========================================="
-echo "       INSTALANDO REALUNIT - POLYGON"
-echo "=========================================="
+read -r -p "Nome da moeda [RealUnit]: " TOKEN_NAME
+TOKEN_NAME="${TOKEN_NAME:-RealUnit}"
 
-# Diretório fixo do projeto
-PROJECT_DIR="/root/moeda"
+read -r -p "Símbolo/ticker [RUT]: " TOKEN_SYMBOL
+TOKEN_SYMBOL="${TOKEN_SYMBOL:-RUT}"
+
+read -r -p "Quantidade inicial de tokens [10000000]: " INITIAL_SUPPLY
+INITIAL_SUPPLY="${INITIAL_SUPPLY:-10000000}"
+
+read -r -p "Casas decimais (0 a 18) [18]: " TOKEN_DECIMALS
+TOKEN_DECIMALS="${TOKEN_DECIMALS:-18}"
+
+read -r -p "Carteira que receberá a emissão inicial (vazio = carteira implantadora): " INITIAL_HOLDER
+
+read -r -p "Permitir novas emissões pelo administrador? (s/N): " MINT_ANSWER
+MINT_ANSWER="${MINT_ANSWER:-N}"
+
+read -r -p "Permitir que qualquer titular queime seus próprios tokens? (S/n): " BURN_ANSWER
+BURN_ANSWER="${BURN_ANSWER:-S}"
+
+read -r -p "Descrição do projeto (opcional): " TOKEN_DESCRIPTION
+
+# ==================================================
+# CRIAR DIRETÓRIO COM O NOME DA CRIPTOMOEDA
+# ==================================================
+
+# Converter nome para minúsculas e remover caracteres especiais
+TOKEN_DIR=$(echo "$TOKEN_NAME" \
+    | iconv -f UTF-8 -t ASCII//TRANSLIT \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^a-z0-9]/-/g; s/-\+/-/g; s/^-//; s/-$//')
+
+if [[ -z "$TOKEN_DIR" ]]; then
+    echo "ERRO: nome inválido para criar o diretório."
+    exit 1
+fi
+
+PROJECT_DIR="/root/$TOKEN_DIR"
+
+if [[ -d "$PROJECT_DIR" ]]; then
+    echo "ERRO: o diretório $PROJECT_DIR já existe."
+    exit 1
+fi
+
 mkdir -p "$PROJECT_DIR"
 cd "$PROJECT_DIR"
 
-echo "Diretório: $(pwd)"
-
-# Verificar Node.js e npm
-if ! command -v node >/dev/null 2>&1; then
-    echo "ERRO: Node.js não encontrado."
-    exit 1
-fi
-
-if ! command -v npm >/dev/null 2>&1; then
-    echo "ERRO: npm não encontrado."
-    exit 1
-fi
-
-echo "Node: $(node -v)"
-echo "NPM: $(npm -v)"
-
-# Criar estrutura
 mkdir -p contracts scripts test deployments
 
-# package.json
+echo
+echo "=========================================="
+echo "PROJETO CRIADO"
+echo "=========================================="
+echo "Nome da moeda: $TOKEN_NAME"
+echo "Símbolo: $TOKEN_SYMBOL"
+echo "Diretório: $PROJECT_DIR"
+echo "=========================================="
+
+
+
+# Validações básicas
+if [[ ! "$TOKEN_NAME" =~ ^[[:print:]]{1,64}$ ]]; then
+  echo "ERRO: nome inválido ou maior que 64 caracteres."
+  exit 1
+fi
+
+if [[ ! "$TOKEN_SYMBOL" =~ ^[A-Za-z0-9]{1,12}$ ]]; then
+  echo "ERRO: símbolo deve conter de 1 a 12 letras/números."
+  exit 1
+fi
+
+if [[ ! "$INITIAL_SUPPLY" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$INITIAL_SUPPLY" == "0" ]]; then
+  echo "ERRO: quantidade inicial inválida."
+  exit 1
+fi
+
+if [[ ! "$TOKEN_DECIMALS" =~ ^([0-9]|1[0-8])$ ]]; then
+  echo "ERRO: casas decimais deve ser um número entre 0 e 18."
+  exit 1
+fi
+
+if [[ -n "$INITIAL_HOLDER" ]] && \
+   [[ ! "$INITIAL_HOLDER" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+  echo "ERRO: endereço da carteira inválido."
+  exit 1
+fi
+
+MINT_ENABLED=false
+[[ "$MINT_ANSWER" =~ ^[Ss]$ ]] && MINT_ENABLED=true
+
+BURN_ENABLED=false
+[[ ! "$BURN_ANSWER" =~ ^[Nn]$ ]] && BURN_ENABLED=true
+
+# Grava configuração JSON com escape seguro feito pelo Node.
+TOKEN_NAME="$TOKEN_NAME" \
+TOKEN_SYMBOL="$TOKEN_SYMBOL" \
+INITIAL_SUPPLY="$INITIAL_SUPPLY" \
+TOKEN_DECIMALS="$TOKEN_DECIMALS" \
+INITIAL_HOLDER="$INITIAL_HOLDER" \
+MINT_ENABLED="$MINT_ENABLED" \
+BURN_ENABLED="$BURN_ENABLED" \
+TOKEN_DESCRIPTION="$TOKEN_DESCRIPTION" \
+node <<'NODE'
+const fs = require("fs");
+const config = {
+  name: process.env.TOKEN_NAME,
+  symbol: process.env.TOKEN_SYMBOL,
+  initialSupply: process.env.INITIAL_SUPPLY,
+  decimals: Number(process.env.TOKEN_DECIMALS),
+  initialHolder: process.env.INITIAL_HOLDER || "",
+  mintEnabled: process.env.MINT_ENABLED === "true",
+  burnEnabled: process.env.BURN_ENABLED === "true",
+  description: process.env.TOKEN_DESCRIPTION || ""
+};
+fs.writeFileSync(".token-config.json", JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+NODE
+
+echo
+echo "---------------- RESUMO ----------------"
+node -e '
+const c=require("./.token-config.json");
+console.log("Nome:",c.name);
+console.log("Símbolo:",c.symbol);
+console.log("Emissão inicial:",c.initialSupply);
+console.log("Casas decimais:",c.decimals);
+console.log("Carteira inicial:",c.initialHolder || "Carteira que implantar");
+console.log("Novas emissões:",c.mintEnabled ? "Permitidas ao administrador" : "Desativadas");
+console.log("Queima:",c.burnEnabled ? "Ativada" : "Desativada");
+console.log("Descrição:",c.description || "(não informada)");
+'
+echo "----------------------------------------"
+read -r -p "Confirma essa configuração? (s/N): " CONFIRM
+if [[ ! "$CONFIRM" =~ ^[Ss]$ ]]; then
+  echo "Configuração cancelada. Execute o instalador novamente para preencher."
+  exit 1
+fi
+
+# ---------------- package.json ----------------
 cat > package.json <<'EOF'
 {
-  "name": "realunit-polygon",
+  "name": "token-personalizado-polygon",
   "version": "1.0.0",
   "private": true,
-  "description": "Token RealUnit ERC20 na Polygon",
+  "description": "Criador de token ERC20 personalizável na Polygon",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
@@ -79,21 +196,59 @@ cat > package.json <<'EOF'
 }
 EOF
 
-# Contrato ERC20
+# ---------------- Contrato ERC20 personalizável ----------------
 cat > contracts/MeuToken.sol <<'EOF'
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract MeuToken is ERC20 {
-    constructor() ERC20("RealUnit", "RUT") {
-        _mint(msg.sender, 10_000_000 * 10 ** decimals());
+contract MeuToken is ERC20, Ownable {
+    uint8 private immutable _customDecimals;
+    bool public immutable mintEnabled;
+    bool public immutable burnEnabled;
+
+    constructor(
+        string memory tokenName,
+        string memory tokenSymbol,
+        uint256 initialSupply,
+        uint8 tokenDecimals,
+        address initialHolder,
+        bool enableMint,
+        bool enableBurn
+    ) ERC20(tokenName, tokenSymbol) Ownable(msg.sender) {
+        require(initialHolder != address(0), "Invalid initial holder");
+        require(tokenDecimals <= 18, "Decimals above 18");
+
+        _customDecimals = tokenDecimals;
+        mintEnabled = enableMint;
+        burnEnabled = enableBurn;
+
+        uint256 multiplier = 10 ** uint256(tokenDecimals);
+        _mint(initialHolder, initialSupply * multiplier);
+    }
+
+    function decimals() public view override returns (uint8) {
+        return _customDecimals;
+    }
+
+    // Somente o proprietario pode emitir novos tokens, se a opcao foi ativada.
+    function mint(address to, uint256 amount) external onlyOwner {
+        require(mintEnabled, "Mint disabled");
+        require(to != address(0), "Invalid recipient");
+        _mint(to, amount);
+    }
+
+    // Queima tokens da propria carteira do titular, se ativada.
+    function burn(uint256 amount) external {
+        require(burnEnabled, "Burn disabled");
+        _burn(msg.sender, amount);
     }
 }
 EOF
 
-# Configuração Hardhat
+# ---------------- Hardhat ----------------
 cat > hardhat.config.js <<'EOF'
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
@@ -102,10 +257,7 @@ const config = {
   solidity: {
     version: "0.8.20",
     settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200
-      }
+      optimizer: { enabled: true, runs: 200 }
     }
   },
   networks: {}
@@ -115,16 +267,14 @@ if (process.env.RPC_URL) {
   config.networks.polygon = {
     url: process.env.RPC_URL,
     chainId: 137,
-    accounts: process.env.PRIVATE_KEY
-      ? [process.env.PRIVATE_KEY]
-      : []
+    accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
   };
 }
 
 module.exports = config;
 EOF
 
-# Script de implantação
+# ---------------- Implantação ----------------
 cat > scripts/deploy.js <<'EOF'
 const hre = require("hardhat");
 const fs = require("fs");
@@ -132,36 +282,55 @@ const path = require("path");
 
 async function main() {
   if (!process.env.PRIVATE_KEY) {
-    throw new Error("PRIVATE_KEY não configurada no arquivo .env");
+    throw new Error("PRIVATE_KEY nao configurada no arquivo .env");
   }
 
+  const configPath = path.join(__dirname, "../.token-config.json");
+  if (!fs.existsSync(configPath)) {
+    throw new Error("Configuracao .token-config.json nao encontrada. Execute o instalador.");
+  }
+
+  const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
   const network = await hre.ethers.provider.getNetwork();
 
   if (network.chainId !== 137n) {
-    throw new Error(
-      `Rede incorreta. Chain ID encontrado: ${network.chainId}. Esperado: 137.`
-    );
+    throw new Error(`Rede incorreta: ${network.chainId}. Esperado: 137 (Polygon).`);
   }
 
   const [deployer] = await hre.ethers.getSigners();
-
   const balance = await hre.ethers.provider.getBalance(deployer.address);
 
-  console.log("====================================");
-  console.log("PUBLICANDO REALUNIT NA POLYGON");
-  console.log("====================================");
-  console.log("Carteira:", deployer.address);
-  console.log("Saldo POL:", hre.ethers.formatEther(balance));
-
   if (balance === 0n) {
-    throw new Error("A carteira não possui POL para pagar o gas.");
+    throw new Error("A carteira nao possui POL para pagar o gas.");
   }
 
-  const MeuToken = await hre.ethers.getContractFactory("MeuToken");
+  const initialHolder = cfg.initialHolder || deployer.address;
 
-  console.log("Enviando contrato para a Polygon...");
+  if (!hre.ethers.isAddress(initialHolder)) {
+    throw new Error("Endereco inicial invalido.");
+  }
 
-  const token = await MeuToken.deploy();
+  console.log("====================================");
+  console.log("IMPLANTANDO TOKEN NA POLYGON");
+  console.log("====================================");
+  console.log("Nome:", cfg.name);
+  console.log("Simbolo:", cfg.symbol);
+  console.log("Emissao inicial:", cfg.initialSupply);
+  console.log("Decimais:", cfg.decimals);
+  console.log("Carteira inicial:", initialHolder);
+  console.log("Carteira implantadora:", deployer.address);
+  console.log("Saldo POL:", hre.ethers.formatEther(balance));
+
+  const Token = await hre.ethers.getContractFactory("MeuToken");
+  const token = await Token.deploy(
+    cfg.name,
+    cfg.symbol,
+    cfg.initialSupply,
+    cfg.decimals,
+    initialHolder,
+    cfg.mintEnabled,
+    cfg.burnEnabled
+  );
 
   await token.waitForDeployment();
 
@@ -175,231 +344,172 @@ async function main() {
     symbol: await token.symbol(),
     totalSupply: (await token.totalSupply()).toString(),
     decimals: Number(await token.decimals()),
-    contractAddress: address,
+    mintEnabled: cfg.mintEnabled,
+    burnEnabled: cfg.burnEnabled,
+    description: cfg.description,
+    initialHolder,
     deployer: deployer.address,
+    contractAddress: address,
     transactionHash: tx.hash,
     explorer: `https://polygonscan.com/address/${address}`,
     deployedAt: new Date().toISOString()
   };
 
   const output = path.join(__dirname, "../deployments/polygon.json");
-
   fs.writeFileSync(output, JSON.stringify(result, null, 2));
 
   console.log("====================================");
-  console.log("TOKEN PUBLICADO COM SUCESSO!");
-  console.log("====================================");
+  console.log("TOKEN PUBLICADO!");
   console.log(JSON.stringify(result, null, 2));
 }
 
-main().catch((error) => {
-  console.error(error);
+main().catch(error => {
+  console.error("ERRO:", error);
   process.exitCode = 1;
 });
 EOF
 
-# Testes
+# ---------------- Testes ----------------
 cat > test/MeuToken.js <<'EOF'
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("RealUnit (RUT)", function () {
-  async function deployToken() {
+describe("MeuToken personalizavel", function () {
+  async function deployToken(options = {}) {
     const [owner, other] = await ethers.getSigners();
+    const Token = await ethers.getContractFactory("MeuToken");
 
-    const MeuToken = await ethers.getContractFactory("MeuToken");
-    const token = await MeuToken.deploy();
+    const token = await Token.deploy(
+      options.name || "Minha Moeda",
+      options.symbol || "MMC",
+      options.supply || "10000000",
+      options.decimals ?? 18,
+      options.holder || owner.address,
+      options.mintEnabled ?? false,
+      options.burnEnabled ?? true
+    );
 
     await token.waitForDeployment();
-
     return { token, owner, other };
   }
 
-  it("Deve ter o nome e símbolo corretos", async function () {
-    const { token } = await deployToken();
-
+  it("usa nome e simbolo informados", async function () {
+    const { token } = await deployToken({ name: "RealUnit", symbol: "RUT" });
     expect(await token.name()).to.equal("RealUnit");
     expect(await token.symbol()).to.equal("RUT");
   });
 
-  it("Deve emitir 10 milhões de tokens", async function () {
-    const { token, owner } = await deployToken();
-
-    const supply = ethers.parseUnits("10000000", 18);
-
-    expect(await token.totalSupply()).to.equal(supply);
-    expect(await token.balanceOf(owner.address)).to.equal(supply);
+  it("emite a quantidade inicial para a carteira escolhida", async function () {
+    const { token, other } = await deployToken({
+      supply: "2500",
+      holder: undefined
+    });
+    expect(await token.balanceOf(other.address)).to.equal(0n);
+    expect(await token.totalSupply()).to.equal(ethers.parseUnits("2500", 18));
   });
 
-  it("Deve permitir transferências", async function () {
-    const { token, other } = await deployToken();
-
-    await token.transfer(other.address, ethers.parseUnits("100", 18));
-
-    expect(await token.balanceOf(other.address)).to.equal(
-      ethers.parseUnits("100", 18)
-    );
+  it("usa as casas decimais configuradas", async function () {
+    const { token } = await deployToken({ decimals: 6 });
+    expect(await token.decimals()).to.equal(6);
+    expect(await token.totalSupply()).to.equal(10_000_000n * 10n ** 6n);
   });
 
-  it("Deve utilizar 18 casas decimais", async function () {
-    const { token } = await deployToken();
+  it("permite mint apenas quando habilitado e pelo proprietario", async function () {
+    const { token, other } = await deployToken({ mintEnabled: true });
+    await token.mint(other.address, 100n);
+    expect(await token.balanceOf(other.address)).to.equal(100n);
+  });
 
-    expect(await token.decimals()).to.equal(18);
+  it("bloqueia mint quando desabilitado", async function () {
+    const { token, other } = await deployToken({ mintEnabled: false });
+    await expect(token.mint(other.address, 100n)).to.be.revertedWith("Mint disabled");
+  });
+
+  it("permite queima quando habilitada", async function () {
+    const { token, owner } = await deployToken({ burnEnabled: true });
+    await token.burn(ethers.parseUnits("100", 18));
+    expect(await token.balanceOf(owner.address)).to.equal(ethers.parseUnits("9999900", 18));
   });
 });
 EOF
 
-# Arquivo .env: preservar se já existir
-if [ ! -f .env ]; then
+# ---------------- .env ----------------
+if [[ ! -f .env ]]; then
   cat > .env <<'EOF'
 RPC_URL=https://polygon-bor-rpc.publicnode.com
 PRIVATE_KEY=
 EOF
   chmod 600 .env
-  echo "Arquivo .env criado."
 else
+  chmod 600 .env
   echo "Arquivo .env existente preservado."
 fi
 
-# Exemplo de configuração
 cat > .env.example <<'EOF'
-RPC_URL=https://polygon-rpc.com
+RPC_URL=https://polygon-bor-rpc.publicnode.com
 PRIVATE_KEY=
 EOF
 
-# Gitignore
 cat > .gitignore <<'EOF'
 node_modules/
 .env
+.token-config.json
 cache/
 artifacts/
 coverage/
 EOF
 
-
-
-
-
-
-
-cat > /root/moeda/verificar_carteira.sh <<'EOF'
+# ---------------- Verificar carteira ----------------
+cat > verificar_carteira.sh <<'EOF'
 #!/bin/bash
-
-set -e
-
+set -Eeuo pipefail
 cd /root/moeda
 
-echo "======================================"
-echo "   VERIFICANDO CARTEIRA REALUNIT"
-echo "======================================"
-
-if [ ! -f .env ]; then
-    echo "ERRO: arquivo .env não encontrado."
-    exit 1
+if [[ ! -f .env ]]; then
+  echo "ERRO: .env nao encontrado."
+  exit 1
 fi
-
-if [ ! -d node_modules/ethers ]; then
-    echo "ERRO: ethers não instalado."
-    exit 1
-fi
-
-if [ ! -d node_modules/dotenv ]; then
-    echo "ERRO: dotenv não instalado."
-    exit 1
-fi
-
-if ! grep -q '^RPC_URL=.' .env; then
-    echo "ERRO: RPC_URL não configurada."
-    exit 1
-fi
-
-if ! grep -q '^PRIVATE_KEY=.' .env; then
-    echo "ERRO: PRIVATE_KEY não configurada."
-    exit 1
-fi
-
-echo
-echo "Consultando blockchain Polygon..."
-echo
 
 node <<'NODE'
 require("dotenv").config();
-
-const {
-    JsonRpcProvider,
-    Wallet,
-    formatEther
-} = require("ethers");
+const { JsonRpcProvider, Wallet, formatEther } = require("ethers");
 
 async function main() {
-    const rpc = process.env.RPC_URL;
-    const privateKey = process.env.PRIVATE_KEY;
+  if (!process.env.RPC_URL || !process.env.PRIVATE_KEY) {
+    throw new Error("Configure RPC_URL e PRIVATE_KEY no .env.");
+  }
 
-    if (!rpc || !privateKey) {
-        throw new Error("RPC_URL ou PRIVATE_KEY não configurada.");
-    }
+  const provider = new JsonRpcProvider(process.env.RPC_URL);
+  const network = await provider.getNetwork();
 
-    const provider = new JsonRpcProvider(rpc);
-    const network = await provider.getNetwork();
+  if (network.chainId !== 137n) {
+    throw new Error(`Rede incorreta: ${network.chainId}. Esperado 137.`);
+  }
 
-    if (network.chainId !== 137n) {
-        throw new Error(
-            `Rede incorreta! Chain ID encontrado: ${network.chainId}`
-        );
-    }
+  const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
+  const balance = await provider.getBalance(wallet.address);
 
-    const wallet = new Wallet(privateKey);
-    const balance = await provider.getBalance(wallet.address);
+  console.log("Rede: Polygon Mainnet");
+  console.log("Chain ID:", network.chainId.toString());
+  console.log("Carteira:", wallet.address);
+  console.log("Saldo POL:", formatEther(balance));
 
-    console.log("======================================");
-    console.log("         RESULTADO DA VERIFICAÇÃO");
-    console.log("======================================");
-
-    console.log("Rede: Polygon Mainnet");
-    console.log("Chain ID:", network.chainId.toString());
-    console.log("Carteira:", wallet.address);
-    console.log("Saldo POL:", formatEther(balance));
-
-    console.log("======================================");
-
-    if (balance === 0n) {
-        console.log("ATENÇÃO: Carteira sem POL.");
-    } else {
-        console.log("Carteira possui POL.");
-        console.log("Verificação concluída!");
-    }
+  if (balance === 0n) {
+    console.log("ATENCAO: carteira sem POL para gas.");
+  }
 }
-
 main().catch(error => {
-    console.error("\nERRO:", error.message);
-    process.exitCode = 1;
+  console.error("ERRO:", error.message);
+  process.exitCode = 1;
 });
 NODE
 EOF
-
-chmod +x /root/moeda/verificar_carteira.sh
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+chmod +x verificar_carteira.sh
 
 echo
 echo "=========================================="
-echo "INSTALANDO DEPENDÊNCIAS"
+echo "INSTALANDO DEPENDENCIAS"
 echo "=========================================="
-
 npm install \
   --fetch-retries=5 \
   --fetch-retry-mintimeout=20000 \
@@ -407,51 +517,26 @@ npm install \
   --fetch-timeout=300000
 
 echo
-echo "=========================================="
-echo "COMPILANDO CONTRATO"
-echo "=========================================="
-
+echo "COMPILANDO CONTRATO..."
 npx hardhat compile
 
 echo
-echo "=========================================="
-echo "EXECUTANDO TESTES"
-echo "=========================================="
-
+echo "EXECUTANDO TESTES..."
 npx hardhat test
 
 echo
 echo "=========================================="
-echo "INSTALAÇÃO CONCLUÍDA"
+echo "INSTALACAO CONCLUIDA"
 echo "=========================================="
-
 echo "Projeto: $PROJECT_DIR"
-
 echo
-echo "Arquivos criados:"
-find contracts scripts test deployments -maxdepth 2 -type f
-
-clear
+echo "Proximos passos:"
+echo "1. Edite /root/moeda/.env e configure sua RPC_URL."
+echo "2. Configure PRIVATE_KEY com a chave da carteira que implantara o contrato."
+echo "3. Nunca compartilhe sua chave privada nem envie o arquivo .env."
+echo "4. Execute: cd /root/moeda && ./verificar_carteira.sh"
+echo "5. Garanta que a carteira tenha POL para pagar o gas."
+echo "6. Revise .token-config.json."
+echo "7. Para publicar na Polygon Mainnet: npm run deploy:polygon"
 echo
-echo "Próxima etapa:"
-echo
-
-echo "1. Abra a extensão MetaMask no Chrome. Clique no ícone da raposa ou no menu de extensões (ícone de quebra-cabeça)."
-echo "2. link para extensão https://chromewebstore.google.com/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn"
-echo "3. crie a conta e uma senha ou importe uma carteira existente e desbloqueie sua carteira."
-echo "========================================================================================================================"
-echo "4. Clique no seletor de contas, onde aparece o nome da sua conta."
-echo "5. Clique nos três pontinhos ao lado da conta desejada."
-echo "6. Selecione Detalhes da conta (Account details)."
-echo "7. Clique em Mostrar chave privada (Show private key)."
-echo "8. Digite a senha da MetaMask."
-echo "9. Pressione e segure Hold to reveal Private Key para revelar a chave"
-echo "========================================================================================================================"
-echo "10. Configure a PRIVATE_KEY no arquivo .env"
-echo "11. teste e verifique se tem saldo na carteira Polygon com o comando abaixo"
-echo "./verificar_carteira.sh"
-echo "12. Garanta que a carteira tenha POL para gas"
-echo "13. Execute: npm run deploy:polygon"
-
-echo
-echo "ATENÇÃO: A implantação será na Polygon Mainnet."
+echo "ATENCAO: o comando de implantacao envia uma transacao real e consome POL."
