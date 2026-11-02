@@ -460,14 +460,19 @@ coverage/
 EOF
 
 # ---------------- Verificar carteira ----------------
-cat > verificar_carteira.sh <<'EOF'
+# ---------------- Verificar carteira ----------------
+cat > verificar_carteira.sh <<EOF
 #!/bin/bash
 set -Eeuo pipefail
 
-if [[ ! -f .env ]]; then
-  echo "ERRO: .env nao encontrado."
+PROJECT_DIR="${PROJECT_DIR}"
+
+if [[ ! -f "\${PROJECT_DIR}/.env" ]]; then
+  echo "ERRO: \${PROJECT_DIR}/.env nao encontrado."
   exit 1
 fi
+
+cd "\${PROJECT_DIR}"
 
 node <<'NODE'
 require("dotenv").config();
@@ -482,7 +487,7 @@ async function main() {
   const network = await provider.getNetwork();
 
   if (network.chainId !== 137n) {
-    throw new Error(`Rede incorreta: ${network.chainId}. Esperado 137.`);
+    throw new Error(\`Rede incorreta: \${network.chainId}. Esperado 137.\`);
   }
 
   const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
@@ -507,7 +512,7 @@ chmod +x verificar_carteira.sh
 
 
 
-cat > publicar_carteira.sh <<'PUBLICAR_EOF'
+cat > validar_moeda.sh <<'PUBLICAR_EOF'
 #!/bin/bash
 set -Eeuo pipefail
 
@@ -517,7 +522,7 @@ set -Eeuo pipefail
 # ============================================================
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Execute como root: sudo bash publicar_carteira.sh"
+  echo "Execute como root: sudo bash validar_moeda.sh"
   exit 1
 fi
 
@@ -641,6 +646,7 @@ EOF
 
 # ---------------- Arquivo .env ----------------
 cat > "${PROJECT_DIR}/.env" <<EOF
+PROJECT_DIR="__PROJECT_DIR__"
 RPC_URL=${RPC_URL}
 PRIVATE_KEY=${PRIVATE_KEY}
 TOKEN_ADDRESS=${TOKEN_ADDRESS}
@@ -656,7 +662,9 @@ echo ""
 echo "✅ Processo concluído. Log em: ${LOG_DIR}/publicar_carteira.log"
 PUBLICAR_EOF
 
-chmod +x publicar_carteira.sh
+# Substitui o placeholder pelo caminho real do projeto
+sed -i "s|__PROJECT_DIR__|${PROJECT_DIR}|g" validar_moeda.sh
+chmod +x validar_moeda.sh
 
 
 echo
