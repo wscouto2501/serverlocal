@@ -506,6 +506,160 @@ NODE
 EOF
 chmod +x verificar_carteira.sh
 
+
+
+cat > publicar_carteira.sh <<'PUBLICAR_EOF'
+#!/bin/bash
+set -Eeuo pipefail
+
+# ============================================================
+# REALUNIT / TOKEN PERSONALIZADO - POLYGON
+# Publica a carteira e o contrato do token na rede Polygon.
+# ============================================================
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Execute como root: sudo bash publicar_carteira.sh"
+  exit 1
+fi
+
+# ---------------- Variáveis de ambiente / diretórios ----------------
+PROJECT_DIR="${PROJECT_DIR:-/opt/realunit}"
+BUILD_DIR="${PROJECT_DIR}/build"
+LOG_DIR="${PROJECT_DIR}/logs"
+mkdir -p "${BUILD_DIR}" "${LOG_DIR}"
+
+# ---------------- Node.js 20+ ----------------
+if ! command -v node >/dev/null 2>&1 || \
+   ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
+  echo "Instalando Node.js 20..."
+  apt-get update
+  apt-get install -y ca-certificates curl
+  curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+  bash /tmp/nodesource_setup.sh
+  apt-get install -y nodejs
+fi
+
+echo "Node.js: $(node -v)"
+echo "NPM:     $(npm -v)"
+
+# ---------------- Dependências do projeto ----------------
+cd "${PROJECT_DIR}"
+
+if [[ ! -f package.json ]]; then
+  echo "Inicializando projeto Node..."
+  npm init -y >/dev/null
+fi
+
+echo "Instalando dependências (ethers, dotenv)..."
+npm install --no-audit --no-fund ethers dotenv 2>&1 | tee -a "${LOG_DIR}/publicar_carteira.log"
+
+# ---------------- Coleta de dados do usuário ----------------
+echo ""
+echo "============================================================"
+echo "  CONFIGURAÇÃO DE PUBLICAÇÃO - POLYGON"
+echo "============================================================"
+
+read -rp "RPC da Polygon (ex: https://polygon-rpc.com): " RPC_URL
+read -rp "Chave privada da carteira publicadora (0x...): " PRIVATE_KEY
+read -rp "Endereço do contrato do token (0x...): " TOKEN_ADDRESS
+
+if [[ -z "${RPC_URL}" || -z "${PRIVATE_KEY}" || -z "${TOKEN_ADDRESS}" ]]; then
+  echo "ERRO: todos os campos são obrigatórios."
+  exit 1
+fi
+
+# ---------------- Geração do script de publicação ----------------
+cat > "${PROJECT_DIR}/publicar.js" <<'EOF'
+require("dotenv").config();
+const { ethers } = require("ethers");
+
+async function main() {
+  const rpcUrl        = process.env.RPC_URL;
+  const privateKey    = process.env.PRIVATE_KEY;
+  const tokenAddress  = process.env.TOKEN_ADDRESS;
+
+  if (!rpcUrl || !privateKey || !tokenAddress) {
+    throw new Error("RPC_URL, PRIVATE_KEY e TOKEN_ADDRESS são obrigatórios.");
+  }
+
+  console.log("Conectando à rede...");
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+  const network = await provider.getNetwork();
+  console.log(`Rede detectada: ${network.name} (chainId ${network.chainId})`);
+
+  const wallet = new ethers.Wallet(privateKey, provider);
+  console.log(`Carteira publicadora: ${wallet.address}`);
+
+  const balance = await provider.getBalance(wallet.address);
+  console.log(`Saldo (MATIC): ${ethers.formatEther(balance)}`);
+
+  if (balance === 0n) {
+    throw new Error("Saldo insuficiente para pagar o gas.");
+  }
+
+  // Verifica se o contrato existe na rede
+  const code = await provider.getCode(tokenAddress);
+  if (code === "0x") {
+    throw new Error(`Nenhum contrato encontrado em ${tokenAddress}`);
+  }
+  console.log("Contrato encontrado. Lendo metadados...");
+
+  // ABI mínima ERC-20
+  const abi = [
+    "function name() view returns (string)",
+    "function symbol() view returns (string)",
+    "function decimals() view returns (uint8)",
+    "function totalSupply() view returns (uint256)",
+    "function balanceOf(address) view returns (uint256)",
+    "function transfer(address,uint256) returns (bool)"
+  ];
+
+  const token = new ethers.Contract(tokenAddress, abi, wallet);
+
+  try {
+    const [name, symbol, decimals, totalSupply] = await Promise.all([
+      token.name(), token.symbol(), token.decimals(), token.totalSupply()
+    ]);
+    console.log("--------------------------------------------");
+    console.log(`Nome:           ${name}`);
+    console.log(`Símbolo:        ${symbol}`);
+    console.log(`Decimais:       ${decimals}`);
+    console.log(`Supply total:   ${ethers.formatUnits(totalSupply, decimals)} ${symbol}`);
+    console.log("--------------------------------------------");
+  } catch (e) {
+    console.warn("Não foi possível ler todos os metadados ERC-20:", e.message);
+  }
+
+  console.log("✅ Publicação da carteira/token validada com sucesso.");
+}
+
+main().catch((err) => {
+  console.error("❌ Falha na publicação:", err.message);
+  process.exit(1);
+});
+EOF
+
+# ---------------- Arquivo .env ----------------
+cat > "${PROJECT_DIR}/.env" <<EOF
+RPC_URL=${RPC_URL}
+PRIVATE_KEY=${PRIVATE_KEY}
+TOKEN_ADDRESS=${TOKEN_ADDRESS}
+EOF
+chmod 600 "${PROJECT_DIR}/.env"
+
+# ---------------- Execução ----------------
+echo ""
+echo "Executando publicação..."
+node "${PROJECT_DIR}/publicar.js" 2>&1 | tee -a "${LOG_DIR}/publicar_carteira.log"
+
+echo ""
+echo "✅ Processo concluído. Log em: ${LOG_DIR}/publicar_carteira.log"
+PUBLICAR_EOF
+
+chmod +x publicar_carteira.sh
+
+
 echo
 echo "=========================================="
 echo "INSTALANDO DEPENDENCIAS"
