@@ -564,7 +564,7 @@ echo "  CONFIGURAÇÃO DE PUBLICAÇÃO - POLYGON"
 echo "============================================================"
 
 read -rp "RPC da Polygon (ex: https://polygon-rpc.com): " RPC_URL
-read -rp "Chave privada da carteira publicadora (0x...): " PRIVATE_KEY
+read -rsp "Chave privada da carteira publicadora (0x...): " PRIVATE_KEY
 read -rp "Endereço do contrato do token (0x...): " TOKEN_ADDRESS
 
 if [[ -z "${RPC_URL}" || -z "${PRIVATE_KEY}" || -z "${TOKEN_ADDRESS}" ]]; then
