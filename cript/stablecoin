@@ -1,68 +1,102 @@
-```bash
 #!/bin/bash
 set -Eeuo pipefail
 
 # ============================================================
 # STABLECOIN PERSONALIZADA - POLYGON
 #
-# Modelo:
-# - Lastro 1:1 em USDC nativo da Polygon.
-# - Depósito de USDC gera stablecoins.
-# - Resgate queima stablecoins e devolve USDC.
-# - Não existe emissão administrativa sem colateral.
-# - Supply inicial: ZERO.
+# COLATERAL CONFIGURÁVEL
+#
+# Exemplos:
+# USDC  -> moeda própria lastreada em USDC
+# EURC  -> moeda própria lastreada em EURC
+# DAI   -> moeda própria lastreada em DAI
+# WETH  -> moeda própria lastreada em WETH
+#
+# Regras:
+# - O usuário escolhe o token ERC-20 de referência.
+# - Os decimais são consultados automaticamente.
+# - 1 unidade da moeda de referência gera 1 unidade
+#   da moeda própria, usando as mesmas casas decimais.
+# - Depósito emite.
+# - Resgate queima e devolve o colateral.
+# - Não existe mint administrativo.
+# - Não existe retirada administrativa de reservas.
+# - Supply inicial ZERO.
+#
+# ATENÇÃO:
+# A paridade é com o TOKEN escolhido, não necessariamente
+# com a moeda fiduciária que ele representa.
 # ============================================================
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Execute como root: sudo bash instalar_stablecoin.sh"
-  exit 1
+    echo "Execute como root:"
+    echo "sudo bash instalar_stablecoin.sh"
+    exit 1
 fi
 
-# ---------------- Node.js 20+ ----------------
+# ============================================================
+# DEPENDÊNCIAS DO SISTEMA
+# ============================================================
 
 if ! command -v node >/dev/null 2>&1 || \
    ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
 
-  echo "Instalando Node.js 20..."
+    echo "Instalando Node.js 20..."
 
-  apt-get update
-  apt-get install -y ca-certificates curl
+    apt-get update
+    apt-get install -y ca-certificates curl
 
-  curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
-  bash /tmp/nodesource_setup.sh
+    curl -fsSL https://deb.nodesource.com/setup_20.x \
+        -o /tmp/nodesource_setup.sh
 
-  apt-get install -y nodejs
-  rm -f /tmp/nodesource_setup.sh
+    bash /tmp/nodesource_setup.sh
+
+    apt-get install -y nodejs
+
+    rm -f /tmp/nodesource_setup.sh
 fi
 
+apt-get install -y iconv
+
+echo
 echo "Node.js: $(node -v)"
 echo "NPM: $(npm -v)"
 
 # ============================================================
-# CONFIGURAÇÃO
+# CONFIGURAÇÃO INTERATIVA
 # ============================================================
 
-DEFAULT_USDC="0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
-
 echo
 echo "=================================================="
-echo "       CONFIGURAÇÃO DA STABLECOIN"
+echo "       STABLECOIN PERSONALIZADA"
 echo "=================================================="
 echo
-echo "Modelo: Stablecoin lastreada em USDC."
-echo "Rede: Polygon PoS."
-echo "Decimais: 6."
-echo "Emissão inicial: ZERO."
+echo "Rede: Polygon PoS"
+echo "Chain ID: 137"
+echo
+echo "Você poderá escolher qualquer token ERC-20"
+echo "compatível existente na Polygon como referência."
+echo
+echo "Exemplos: USDC, EURC, DAI, WETH."
+echo
+echo "Atenção: o contrato não verifica se o token"
+echo "realmente possui reservas fiduciárias."
 echo
 
-read -r -p "Nome da stablecoin [RealDollar]: " TOKEN_NAME
-TOKEN_NAME="${TOKEN_NAME:-RealDollar}"
+read -r -p "Nome da sua moeda [RealUnit]: " TOKEN_NAME
+TOKEN_NAME="${TOKEN_NAME:-RealUnit}"
 
-read -r -p "Símbolo/ticker [RUSD]: " TOKEN_SYMBOL
-TOKEN_SYMBOL="${TOKEN_SYMBOL:-RUSD}"
+read -r -p "Símbolo da sua moeda [RUNIT]: " TOKEN_SYMBOL
+TOKEN_SYMBOL="${TOKEN_SYMBOL:-RUNIT}"
 
-read -r -p "Endereço do USDC de garantia [$DEFAULT_USDC]: " COLLATERAL
-COLLATERAL="${COLLATERAL:-$DEFAULT_USDC}"
+echo
+echo "Informe o endereço do token ERC-20 de referência."
+echo "Exemplo: endereço do USDC ou EURC na Polygon."
+echo
+
+read -r -p "Endereço do token de referência: " COLLATERAL
+
+read -r -p "Símbolo esperado do token de referência: " COLLATERAL_SYMBOL
 
 read -r -p "Descrição do projeto (opcional): " TOKEN_DESCRIPTION
 
@@ -71,49 +105,54 @@ read -r -p "Descrição do projeto (opcional): " TOKEN_DESCRIPTION
 # ============================================================
 
 if [[ ! "$TOKEN_NAME" =~ ^[[:print:]]{1,64}$ ]]; then
-  echo "ERRO: nome inválido."
-  exit 1
+    echo "ERRO: nome inválido."
+    exit 1
 fi
 
 if [[ ! "$TOKEN_SYMBOL" =~ ^[A-Za-z0-9]{1,12}$ ]]; then
-  echo "ERRO: símbolo inválido."
-  exit 1
-fi
-
-if [[ "${TOKEN_SYMBOL^^}" == "USDC" ]]; then
-  echo "ERRO: não utilize USDC como ticker da sua moeda."
-  exit 1
+    echo "ERRO: símbolo inválido."
+    exit 1
 fi
 
 if [[ ! "$COLLATERAL" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
-  echo "ERRO: endereço de colateral inválido."
-  exit 1
+    echo "ERRO: endereço do colateral inválido."
+    exit 1
 fi
 
 if [[ "${COLLATERAL,,}" == "0x0000000000000000000000000000000000000000" ]]; then
-  echo "ERRO: endereço zero não permitido."
-  exit 1
+    echo "ERRO: endereço zero não permitido."
+    exit 1
+fi
+
+if [[ ! "$COLLATERAL_SYMBOL" =~ ^[A-Za-z0-9._-]{1,20}$ ]]; then
+    echo "ERRO: símbolo de referência inválido."
+    exit 1
+fi
+
+if [[ "${TOKEN_SYMBOL^^}" == "${COLLATERAL_SYMBOL^^}" ]]; then
+    echo "ERRO: use um símbolo diferente do token de referência."
+    exit 1
 fi
 
 # ============================================================
-# DIRETÓRIO
+# DIRETÓRIO DO PROJETO
 # ============================================================
 
 TOKEN_DIR=$(echo "$TOKEN_NAME" \
-  | iconv -f UTF-8 -t ASCII//TRANSLIT \
-  | tr '[:upper:]' '[:lower:]' \
-  | sed 's/[^a-z0-9]/-/g; s/-\+/-/g; s/^-//; s/-$//')
+    | iconv -f UTF-8 -t ASCII//TRANSLIT \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^a-z0-9]/-/g; s/-\+/-/g; s/^-//; s/-$//')
 
 if [[ -z "$TOKEN_DIR" ]]; then
-  echo "ERRO: nome inválido para diretório."
-  exit 1
+    echo "ERRO: nome inválido para diretório."
+    exit 1
 fi
 
 PROJECT_DIR="/root/${TOKEN_DIR}"
 
 if [[ -d "$PROJECT_DIR" ]]; then
-  echo "ERRO: diretório já existe: $PROJECT_DIR"
-  exit 1
+    echo "ERRO: diretório já existe: $PROJECT_DIR"
+    exit 1
 fi
 
 mkdir -p "$PROJECT_DIR"
@@ -122,50 +161,52 @@ cd "$PROJECT_DIR"
 mkdir -p contracts scripts test deployments logs
 
 # ============================================================
-# CONFIGURAÇÃO JSON
+# CONFIGURAÇÃO DO PROJETO
 # ============================================================
 
 TOKEN_NAME="$TOKEN_NAME" \
 TOKEN_SYMBOL="$TOKEN_SYMBOL" \
 COLLATERAL="$COLLATERAL" \
+COLLATERAL_SYMBOL="$COLLATERAL_SYMBOL" \
 TOKEN_DESCRIPTION="$TOKEN_DESCRIPTION" \
 node <<'NODE'
 const fs = require("fs");
 
 const config = {
-  name: process.env.TOKEN_NAME,
-  symbol: process.env.TOKEN_SYMBOL,
-  collateral: process.env.COLLATERAL,
-  decimals: 6,
-  description: process.env.TOKEN_DESCRIPTION || "",
-  network: "Polygon",
-  chainId: 137
+    name: process.env.TOKEN_NAME,
+    symbol: process.env.TOKEN_SYMBOL,
+    collateral: process.env.COLLATERAL,
+    collateralSymbol: process.env.COLLATERAL_SYMBOL,
+    decimals: null,
+    description: process.env.TOKEN_DESCRIPTION || "",
+    network: "Polygon",
+    chainId: 137
 };
 
 fs.writeFileSync(
-  ".stablecoin-config.json",
-  JSON.stringify(config, null, 2) + "\n",
-  { mode: 0o600 }
+    ".stablecoin-config.json",
+    JSON.stringify(config, null, 2) + "\n",
+    { mode: 0o600 }
 );
 NODE
 
 echo
-echo "=========================================="
-echo "PROJETO CRIADO"
-echo "=========================================="
+echo "=================================================="
+echo "CONFIGURAÇÃO"
+echo "=================================================="
 echo "Nome: $TOKEN_NAME"
 echo "Símbolo: $TOKEN_SYMBOL"
-echo "Colateral: $COLLATERAL"
-echo "Decimais: 6"
-echo "Supply inicial: 0"
-echo "Diretório: $PROJECT_DIR"
-echo "=========================================="
+echo "Token de referência: $COLLATERAL_SYMBOL"
+echo "Contrato de referência: $COLLATERAL"
+echo "Rede: Polygon"
+echo "Supply inicial: ZERO"
+echo "=================================================="
 
 read -r -p "Confirma a configuração? (s/N): " CONFIRM
 
 if [[ ! "$CONFIRM" =~ ^[Ss]$ ]]; then
-  echo "Configuração cancelada."
-  exit 1
+    echo "Configuração cancelada."
+    exit 1
 fi
 
 # ============================================================
@@ -174,15 +215,16 @@ fi
 
 cat > package.json <<'EOF'
 {
-  "name": "stablecoin-polygon",
+  "name": "stablecoin-personalizada-polygon",
   "version": "1.0.0",
   "private": true,
-  "description": "Stablecoin lastreada em USDC na Polygon",
+  "description": "Stablecoin com colateral ERC20 configurável",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
     "deploy:polygon": "hardhat run scripts/deploy.js --network polygon",
-    "reserves": "hardhat run scripts/reserves.js --network polygon"
+    "reserves": "hardhat run scripts/reserves.js --network polygon",
+    "wallet": "hardhat run scripts/wallet.js --network polygon"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "5.0.0",
@@ -221,7 +263,7 @@ contract Stablecoin is
 
     IERC20Metadata public immutable collateralToken;
 
-    uint8 private constant TOKEN_DECIMALS = 6;
+    uint8 private immutable tokenDecimals;
 
     event Deposited(
         address indexed account,
@@ -251,26 +293,34 @@ contract Stablecoin is
             "Collateral is not a contract"
         );
 
+        uint8 referenceDecimals =
+            IERC20Metadata(collateralAddress).decimals();
+
         require(
-            IERC20Metadata(collateralAddress).decimals() == 6,
-            "Collateral must have 6 decimals"
+            referenceDecimals <= 18,
+            "Unsupported collateral decimals"
         );
 
         collateralToken = IERC20Metadata(collateralAddress);
+
+        tokenDecimals = referenceDecimals;
     }
+
+    // A moeda própria utiliza exatamente os mesmos
+    // decimais do token de referência.
 
     function decimals()
         public
-        pure
+        view
         override
         returns (uint8)
     {
-        return TOKEN_DECIMALS;
+        return tokenDecimals;
     }
 
     // ========================================================
     // DEPÓSITO
-    // 1 USDC depositado = 1 stablecoin emitida.
+    // 1 unidade recebida = 1 unidade emitida.
     // ========================================================
 
     function deposit(uint256 amount)
@@ -293,6 +343,11 @@ contract Stablecoin is
             collateralToken.balanceOf(address(this));
 
         require(
+            balanceAfter >= balanceBefore,
+            "Invalid collateral balance"
+        );
+
+        require(
             balanceAfter - balanceBefore == amount,
             "Unexpected collateral received"
         );
@@ -304,7 +359,7 @@ contract Stablecoin is
 
     // ========================================================
     // RESGATE
-    // 1 stablecoin queimada = 1 USDC devolvido.
+    // 1 unidade queimada = 1 unidade devolvida.
     // ========================================================
 
     function redeem(uint256 amount)
@@ -330,7 +385,7 @@ contract Stablecoin is
     }
 
     // ========================================================
-    // RESERVAS
+    // INFORMAÇÕES DAS RESERVAS
     // ========================================================
 
     function reserveBalance()
@@ -367,31 +422,52 @@ contract Stablecoin is
         _unpause();
     }
 
-    // Não existe mint administrativo.
-    // Não existe retirada administrativa de USDC.
+    // NÃO EXISTE:
+    // - Mint administrativo.
+    // - Retirada administrativa de colateral.
+    // - Alteração do endereço de colateral.
+    //
     // A emissão depende exclusivamente de depósitos.
 }
 EOF
 
 # ============================================================
-# MOCK USDC PARA TESTES
+# TOKEN FALSO PARA TESTES LOCAIS
 # ============================================================
 
-cat > contracts/MockUSDC.sol <<'EOF'
+cat > contracts/MockCollateral.sol <<'EOF'
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract MockUSDC is ERC20 {
+contract MockCollateral is ERC20 {
 
-    constructor() ERC20("Mock USDC", "mUSDC") {}
+    uint8 private immutable tokenDecimals;
 
-    function decimals() public pure override returns (uint8) {
-        return 6;
+    constructor(
+        string memory tokenName,
+        string memory tokenSymbol,
+        uint8 decimalsValue
+    )
+        ERC20(tokenName, tokenSymbol)
+    {
+        tokenDecimals = decimalsValue;
     }
 
-    function mint(address to, uint256 amount) external {
+    function decimals()
+        public
+        view
+        override
+        returns (uint8)
+    {
+        return tokenDecimals;
+    }
+
+    function mint(
+        address to,
+        uint256 amount
+    ) external {
         _mint(to, amount);
     }
 }
@@ -406,33 +482,33 @@ require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
 
 const config = {
-  solidity: {
-    version: "0.8.20",
-    settings: {
-      optimizer: {
-        enabled: true,
-        runs: 200
-      }
-    }
-  },
-  networks: {}
+    solidity: {
+        version: "0.8.20",
+        settings: {
+            optimizer: {
+                enabled: true,
+                runs: 200
+            }
+        }
+    },
+    networks: {}
 };
 
 if (process.env.RPC_URL) {
-  config.networks.polygon = {
-    url: process.env.RPC_URL,
-    chainId: 137,
-    accounts: process.env.PRIVATE_KEY
-      ? [process.env.PRIVATE_KEY]
-      : []
-  };
+    config.networks.polygon = {
+        url: process.env.RPC_URL,
+        chainId: 137,
+        accounts: process.env.PRIVATE_KEY
+            ? [process.env.PRIVATE_KEY]
+            : []
+    };
 }
 
 module.exports = config;
 EOF
 
 # ============================================================
-# IMPLANTAÇÃO
+# IMPLANTAÇÃO NA POLYGON
 # ============================================================
 
 cat > scripts/deploy.js <<'EOF'
@@ -442,132 +518,154 @@ const path = require("path");
 
 async function main() {
 
-  const cfg = JSON.parse(
-    fs.readFileSync(
-      path.join(__dirname, "../.stablecoin-config.json"),
-      "utf8"
-    )
-  );
+    const configPath = path.join(
+        __dirname,
+        "../.stablecoin-config.json"
+    );
 
-  if (!process.env.PRIVATE_KEY) {
-    throw new Error("PRIVATE_KEY não configurada.");
-  }
+    const cfg = JSON.parse(
+        fs.readFileSync(configPath, "utf8")
+    );
 
-  const network = await hre.ethers.provider.getNetwork();
+    if (!process.env.PRIVATE_KEY) {
+        throw new Error("PRIVATE_KEY não configurada.");
+    }
 
-  if (network.chainId !== 137n) {
-    throw new Error("Rede incorreta. Esperado Polygon Mainnet.");
-  }
+    const network = await hre.ethers.provider.getNetwork();
 
-  const [deployer] = await hre.ethers.getSigners();
+    if (network.chainId !== 137n) {
+        throw new Error("Rede incorreta. Esperado Polygon.");
+    }
 
-  const balance = await hre.ethers.provider.getBalance(
-    deployer.address
-  );
+    const [deployer] = await hre.ethers.getSigners();
 
-  if (balance === 0n) {
-    throw new Error("Carteira sem POL para pagar gas.");
-  }
+    const balance = await hre.ethers.provider.getBalance(
+        deployer.address
+    );
 
-  const collateral = cfg.collateral;
+    if (balance === 0n) {
+        throw new Error("Carteira sem POL para pagar gas.");
+    }
 
-  if (!hre.ethers.isAddress(collateral)) {
-    throw new Error("Endereço de colateral inválido.");
-  }
+    if (!hre.ethers.isAddress(cfg.collateral)) {
+        throw new Error("Endereço de referência inválido.");
+    }
 
-  const collateralCode =
-    await hre.ethers.provider.getCode(collateral);
+    const code = await hre.ethers.provider.getCode(
+        cfg.collateral
+    );
 
-  if (collateralCode === "0x") {
-    throw new Error("Contrato de colateral inexistente.");
-  }
+    if (code === "0x") {
+        throw new Error("Contrato de referência inexistente.");
+    }
 
-  const collateralContract = new hre.ethers.Contract(
-    collateral,
-    [
-      "function symbol() view returns (string)",
-      "function decimals() view returns (uint8)"
-    ],
-    hre.ethers.provider
-  );
+    const reference = new hre.ethers.Contract(
+        cfg.collateral,
+        [
+            "function symbol() view returns (string)",
+            "function decimals() view returns (uint8)",
+            "function balanceOf(address) view returns (uint256)"
+        ],
+        hre.ethers.provider
+    );
 
-  const [collateralSymbol, collateralDecimals] =
-    await Promise.all([
-      collateralContract.symbol(),
-      collateralContract.decimals()
+    const [symbol, decimals] = await Promise.all([
+        reference.symbol(),
+        reference.decimals()
     ]);
 
-  if (collateralDecimals !== 6n) {
-    throw new Error("Colateral precisa ter 6 decimais.");
-  }
+    if (symbol.toLowerCase() !== cfg.collateralSymbol.toLowerCase()) {
+        throw new Error(
+            `Símbolo incorreto. Informado: ${cfg.collateralSymbol}; encontrado: ${symbol}`
+        );
+    }
 
-  console.log("======================================");
-  console.log("IMPLANTAÇÃO DA STABLECOIN");
-  console.log("======================================");
-  console.log("Nome:", cfg.name);
-  console.log("Símbolo:", cfg.symbol);
-  console.log("Colateral:", collateral);
-  console.log("Símbolo do colateral:", collateralSymbol);
-  console.log("Carteira:", deployer.address);
-  console.log("Saldo POL:", hre.ethers.formatEther(balance));
-  console.log("Supply inicial: ZERO");
+    if (decimals > 18n) {
+        throw new Error("Token de referência possui decimais não suportados.");
+    }
 
-  const Factory = await hre.ethers.getContractFactory(
-    "Stablecoin"
-  );
+    cfg.decimals = Number(decimals);
 
-  const token = await Factory.deploy(
-    cfg.name,
-    cfg.symbol,
-    collateral
-  );
+    fs.writeFileSync(
+        configPath,
+        JSON.stringify(cfg, null, 2) + "\n",
+        { mode: 0o600 }
+    );
 
-  await token.waitForDeployment();
+    console.log("");
+    console.log("======================================");
+    console.log("IMPLANTAÇÃO DA STABLECOIN");
+    console.log("======================================");
 
-  const address = await token.getAddress();
+    console.log("Nome:", cfg.name);
+    console.log("Símbolo:", cfg.symbol);
+    console.log("Referência:", symbol);
+    console.log("Contrato de referência:", cfg.collateral);
+    console.log("Decimais:", cfg.decimals);
+    console.log("Carteira:", deployer.address);
+    console.log("Saldo POL:", hre.ethers.formatEther(balance));
+    console.log("Supply inicial: ZERO");
 
-  const tx = token.deploymentTransaction();
+    const Factory = await hre.ethers.getContractFactory(
+        "Stablecoin"
+    );
 
-  const result = {
-    network: "Polygon Mainnet",
-    chainId: 137,
-    name: cfg.name,
-    symbol: cfg.symbol,
-    decimals: 6,
-    collateral,
-    collateralSymbol,
-    deployer: deployer.address,
-    contractAddress: address,
-    transactionHash: tx.hash,
-    explorer: `https://polygonscan.com/address/${address}`,
-    deployedAt: new Date().toISOString()
-  };
+    const token = await Factory.deploy(
+        cfg.name,
+        cfg.symbol,
+        cfg.collateral
+    );
 
-  const output = path.join(
-    __dirname,
-    "../deployments/polygon.json"
-  );
+    await token.waitForDeployment();
 
-  fs.writeFileSync(
-    output,
-    JSON.stringify(result, null, 2),
-    { mode: 0o600 }
-  );
+    const address = await token.getAddress();
 
-  console.log("======================================");
-  console.log("CONTRATO IMPLANTADO");
-  console.log(JSON.stringify(result, null, 2));
-  console.log("======================================");
+    const tx = token.deploymentTransaction();
+
+    const result = {
+        network: "Polygon Mainnet",
+        chainId: 137,
+        name: cfg.name,
+        symbol: cfg.symbol,
+        decimals: cfg.decimals,
+        collateralSymbol: symbol,
+        collateralAddress: cfg.collateral,
+        deployer: deployer.address,
+        contractAddress: address,
+        transactionHash: tx.hash,
+        explorer: `https://polygonscan.com/address/${address}`,
+        deployedAt: new Date().toISOString()
+    };
+
+    const output = path.join(
+        __dirname,
+        "../deployments/polygon.json"
+    );
+
+    fs.writeFileSync(
+        output,
+        JSON.stringify(result, null, 2),
+        { mode: 0o600 }
+    );
+
+    console.log("");
+    console.log("======================================");
+    console.log("CONTRATO IMPLANTADO");
+    console.log("======================================");
+
+    console.log(JSON.stringify(result, null, 2));
+
+    console.log("======================================");
 }
 
 main().catch(error => {
-  console.error("ERRO:", error);
-  process.exitCode = 1;
+    console.error("ERRO:", error);
+    process.exitCode = 1;
 });
 EOF
 
 # ============================================================
-# CONSULTA DE RESERVAS
+# CONSULTA DAS RESERVAS
 # ============================================================
 
 cat > scripts/reserves.js <<'EOF'
@@ -577,81 +675,132 @@ const path = require("path");
 
 async function main() {
 
-  const deployment = JSON.parse(
-    fs.readFileSync(
-      path.join(__dirname, "../deployments/polygon.json"),
-      "utf8"
-    )
-  );
+    const file = path.join(
+        __dirname,
+        "../deployments/polygon.json"
+    );
 
-  const network = await hre.ethers.provider.getNetwork();
+    if (!fs.existsSync(file)) {
+        throw new Error("Contrato ainda não implantado.");
+    }
 
-  if (network.chainId !== 137n) {
-    throw new Error("Rede incorreta.");
-  }
+    const deployment = JSON.parse(
+        fs.readFileSync(file, "utf8")
+    );
 
-  const abi = [
-    "function name() view returns (string)",
-    "function symbol() view returns (string)",
-    "function totalSupply() view returns (uint256)",
-    "function reserveBalance() view returns (uint256)",
-    "function reserveRatio() view returns (uint256)",
-    "function collateralToken() view returns (address)"
-  ];
+    const network = await hre.ethers.provider.getNetwork();
 
-  const token = new hre.ethers.Contract(
-    deployment.contractAddress,
-    abi,
-    hre.ethers.provider
-  );
+    if (network.chainId !== 137n) {
+        throw new Error("Rede incorreta.");
+    }
 
-  const [
-    name,
-    symbol,
-    supply,
-    reserves,
-    ratio,
-    collateral
-  ] = await Promise.all([
-    token.name(),
-    token.symbol(),
-    token.totalSupply(),
-    token.reserveBalance(),
-    token.reserveRatio(),
-    token.collateralToken()
-  ]);
+    const abi = [
+        "function name() view returns (string)",
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)",
+        "function totalSupply() view returns (uint256)",
+        "function reserveBalance() view returns (uint256)",
+        "function reserveRatio() view returns (uint256)",
+        "function collateralToken() view returns (address)"
+    ];
 
-  console.log("");
-  console.log("======================================");
-  console.log("RELATÓRIO DE RESERVAS");
-  console.log("======================================");
+    const token = new hre.ethers.Contract(
+        deployment.contractAddress,
+        abi,
+        hre.ethers.provider
+    );
 
-  console.log("Moeda:", name);
-  console.log("Símbolo:", symbol);
-  console.log("Contrato:", deployment.contractAddress);
-  console.log("Colateral:", collateral);
+    const [
+        name,
+        symbol,
+        decimals,
+        supply,
+        reserves,
+        ratio,
+        collateral
+    ] = await Promise.all([
+        token.name(),
+        token.symbol(),
+        token.decimals(),
+        token.totalSupply(),
+        token.reserveBalance(),
+        token.reserveRatio(),
+        token.collateralToken()
+    ]);
 
-  console.log(
-    "Supply emitido:",
-    hre.ethers.formatUnits(supply, 6)
-  );
+    console.log("");
+    console.log("======================================");
+    console.log("RELATÓRIO DE RESERVAS");
+    console.log("======================================");
 
-  console.log(
-    "USDC em reserva:",
-    hre.ethers.formatUnits(reserves, 6)
-  );
+    console.log("Moeda:", name);
+    console.log("Símbolo:", symbol);
+    console.log("Contrato:", deployment.contractAddress);
+    console.log("Referência:", deployment.collateralSymbol);
+    console.log("Colateral:", collateral);
 
-  console.log(
-    "Cobertura:",
-    `${(Number(ratio) / 100).toFixed(2)}%`
-  );
+    console.log(
+        "Supply:",
+        hre.ethers.formatUnits(supply, decimals)
+    );
 
-  console.log("======================================");
+    console.log(
+        "Reservas:",
+        hre.ethers.formatUnits(reserves, decimals)
+    );
+
+    console.log(
+        "Cobertura:",
+        `${(Number(ratio) / 100).toFixed(2)}%`
+    );
+
+    console.log("======================================");
 }
 
 main().catch(error => {
-  console.error("ERRO:", error);
-  process.exitCode = 1;
+    console.error("ERRO:", error);
+    process.exitCode = 1;
+});
+EOF
+
+# ============================================================
+# VERIFICAR CARTEIRA
+# ============================================================
+
+cat > scripts/wallet.js <<'EOF'
+const hre = require("hardhat");
+
+async function main() {
+
+    if (!process.env.PRIVATE_KEY) {
+        throw new Error("PRIVATE_KEY não configurada.");
+    }
+
+    const network = await hre.ethers.provider.getNetwork();
+
+    if (network.chainId !== 137n) {
+        throw new Error("RPC não pertence à Polygon.");
+    }
+
+    const [wallet] = await hre.ethers.getSigners();
+
+    const balance = await hre.ethers.provider.getBalance(
+        wallet.address
+    );
+
+    console.log("Rede: Polygon");
+    console.log("Chain ID:", network.chainId.toString());
+    console.log("Carteira:", wallet.address);
+    console.log("Saldo POL:", hre.ethers.formatEther(balance));
+
+    if (balance === 0n) {
+        console.log("ATENÇÃO: carteira sem POL para gas.");
+    }
+}
+
+main().catch(error => {
+    console.error("ERRO:", error.message);
+    process.exitCode = 1;
 });
 EOF
 
@@ -663,245 +812,213 @@ cat > test/Stablecoin.js <<'EOF'
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("Stablecoin lastreada em USDC", function () {
+describe("Stablecoin com colateral configurável", function () {
 
-  async function setup() {
+    async function setup(decimals = 6) {
 
-    const [owner, user, other] = await ethers.getSigners();
+        const [owner, user, other] = await ethers.getSigners();
 
-    const Mock = await ethers.getContractFactory("MockUSDC");
-    const usdc = await Mock.deploy();
+        const Mock = await ethers.getContractFactory(
+            "MockCollateral"
+        );
 
-    await usdc.waitForDeployment();
+        const collateral = await Mock.deploy(
+            "Mock Reference",
+            "MREF",
+            decimals
+        );
 
-    const Factory = await ethers.getContractFactory("Stablecoin");
+        await collateral.waitForDeployment();
 
-    const token = await Factory.deploy(
-      "RealDollar",
-      "RUSD",
-      await usdc.getAddress()
-    );
+        const Factory = await ethers.getContractFactory(
+            "Stablecoin"
+        );
 
-    await token.waitForDeployment();
+        const token = await Factory.deploy(
+            "My Stablecoin",
+            "MYST",
+            await collateral.getAddress()
+        );
 
-    return { owner, user, other, usdc, token };
-  }
+        await token.waitForDeployment();
 
-  const amount = 1000n * 10n ** 6n;
+        return {
+            owner,
+            user,
+            other,
+            collateral,
+            token,
+            decimals
+        };
+    }
 
-  it("inicia sem emissão de tokens", async function () {
+    it("inicia com supply zero", async function () {
 
-    const { token } = await setup();
+        const { token } = await setup();
 
-    expect(await token.totalSupply()).to.equal(0n);
-  });
+        expect(await token.totalSupply()).to.equal(0n);
+    });
 
-  it("utiliza 6 casas decimais", async function () {
+    it("herda os decimais do colateral", async function () {
 
-    const { token } = await setup();
+        const { token } = await setup(6);
 
-    expect(await token.decimals()).to.equal(6n);
-  });
+        expect(await token.decimals()).to.equal(6n);
+    });
 
-  it("emite somente após receber USDC", async function () {
+    it("também suporta referência com 18 decimais", async function () {
 
-    const { user, usdc, token } = await setup();
+        const { token } = await setup(18);
 
-    await usdc.mint(user.address, amount);
+        expect(await token.decimals()).to.equal(18n);
+    });
 
-    await usdc.connect(user).approve(
-      await token.getAddress(),
-      amount
-    );
+    it("emite somente após receber o colateral", async function () {
 
-    await token.connect(user).deposit(amount);
+        const { user, collateral, token } = await setup();
 
-    expect(await token.balanceOf(user.address))
-      .to.equal(amount);
+        const amount = 1000n * 10n ** 6n;
 
-    expect(await token.totalSupply())
-      .to.equal(amount);
+        await collateral.mint(user.address, amount);
 
-    expect(await token.reserveBalance())
-      .to.equal(amount);
-  });
+        await collateral.connect(user).approve(
+            await token.getAddress(),
+            amount
+        );
 
-  it("permite resgatar e queimar os tokens", async function () {
+        await token.connect(user).deposit(amount);
 
-    const { user, usdc, token } = await setup();
+        expect(await token.balanceOf(user.address))
+            .to.equal(amount);
 
-    await usdc.mint(user.address, amount);
+        expect(await token.totalSupply())
+            .to.equal(amount);
 
-    await usdc.connect(user).approve(
-      await token.getAddress(),
-      amount
-    );
+        expect(await token.reserveBalance())
+            .to.equal(amount);
+    });
 
-    await token.connect(user).deposit(amount);
+    it("permite resgatar e queimar os tokens", async function () {
 
-    const balanceBefore = await usdc.balanceOf(user.address);
+        const { user, collateral, token } = await setup();
 
-    await token.connect(user).redeem(amount);
+        const amount = 1000n * 10n ** 6n;
 
-    const balanceAfter = await usdc.balanceOf(user.address);
+        await collateral.mint(user.address, amount);
 
-    expect(balanceAfter - balanceBefore).to.equal(amount);
+        await collateral.connect(user).approve(
+            await token.getAddress(),
+            amount
+        );
 
-    expect(await token.totalSupply()).to.equal(0n);
+        await token.connect(user).deposit(amount);
 
-    expect(await token.reserveBalance()).to.equal(0n);
-  });
+        const before = await collateral.balanceOf(user.address);
 
-  it("impede emissão sem depósito", async function () {
+        await token.connect(user).redeem(amount);
 
-    const { user, token } = await setup();
+        const after = await collateral.balanceOf(user.address);
 
-    await expect(
-      token.connect(user).deposit(amount)
-    ).to.be.reverted;
-  });
+        expect(after - before).to.equal(amount);
 
-  it("impede resgate acima do saldo", async function () {
+        expect(await token.totalSupply()).to.equal(0n);
 
-    const { user, token } = await setup();
+        expect(await token.reserveBalance()).to.equal(0n);
+    });
 
-    await expect(
-      token.connect(user).redeem(amount)
-    ).to.be.revertedWith("Insufficient reserves");
-  });
+    it("impede depósito sem colateral", async function () {
 
-  it("impede depósito de valor zero", async function () {
+        const { user, token } = await setup();
 
-    const { user, token } = await setup();
+        await expect(
+            token.connect(user).deposit(1000000n)
+        ).to.be.reverted;
+    });
 
-    await expect(
-      token.connect(user).deposit(0)
-    ).to.be.revertedWith("Amount must be positive");
-  });
+    it("impede depósito de valor zero", async function () {
 
-  it("mantém cobertura de 100% após depósito", async function () {
+        const { user, token } = await setup();
 
-    const { user, usdc, token } = await setup();
+        await expect(
+            token.connect(user).deposit(0)
+        ).to.be.revertedWith("Amount must be positive");
+    });
 
-    await usdc.mint(user.address, amount);
+    it("impede resgate de valor zero", async function () {
 
-    await usdc.connect(user).approve(
-      await token.getAddress(),
-      amount
-    );
+        const { user, token } = await setup();
 
-    await token.connect(user).deposit(amount);
+        await expect(
+            token.connect(user).redeem(0)
+        ).to.be.revertedWith("Amount must be positive");
+    });
 
-    expect(await token.reserveRatio()).to.equal(10000n);
-  });
+    it("calcula cobertura de 100%", async function () {
 
-  it("permite pausa somente ao proprietário", async function () {
+        const { user, collateral, token } = await setup();
 
-    const { owner, user, token } = await setup();
+        const amount = 500n * 10n ** 6n;
 
-    await expect(
-      token.connect(user).pause()
-    ).to.be.reverted;
+        await collateral.mint(user.address, amount);
 
-    await token.connect(owner).pause();
+        await collateral.connect(user).approve(
+            await token.getAddress(),
+            amount
+        );
 
-    expect(await token.paused()).to.equal(true);
+        await token.connect(user).deposit(amount);
 
-    await expect(
-      token.connect(user).deposit(amount)
-    ).to.be.revertedWithCustomError(token, "EnforcedPause");
-  });
+        expect(await token.reserveRatio()).to.equal(10000n);
+    });
 
-  it("permite retomar operações pelo proprietário", async function () {
+    it("somente o proprietário pode pausar", async function () {
 
-    const { owner, token } = await setup();
+        const { user, token } = await setup();
 
-    await token.pause();
-    await token.unpause();
+        await expect(
+            token.connect(user).pause()
+        ).to.be.reverted;
 
-    expect(await token.paused()).to.equal(false);
-  });
+        await token.pause();
 
-  it("não permite retirar o USDC por uma função administrativa", async function () {
+        expect(await token.paused()).to.equal(true);
+    });
 
-    const { token } = await setup();
+    it("impede depósito quando pausado", async function () {
 
-    expect(token.withdrawCollateral).to.equal(undefined);
-    expect(token.mint).to.equal(undefined);
-  });
+        const { user, token } = await setup();
+
+        await token.pause();
+
+        await expect(
+            token.connect(user).deposit(1000000n)
+        ).to.be.revertedWithCustomError(token, "EnforcedPause");
+    });
+
+    it("permite ao proprietário retomar operações", async function () {
+
+        const { token } = await setup();
+
+        await token.pause();
+
+        await token.unpause();
+
+        expect(await token.paused()).to.equal(false);
+    });
 
 });
 EOF
 
 # ============================================================
-# VERIFICAÇÃO DE CARTEIRA
+# CONFIGURAÇÃO .ENV
 # ============================================================
 
-cat > verificar_carteira.sh <<'EOF'
-#!/bin/bash
-set -Eeuo pipefail
-
-cd "$(dirname "$0")"
-
-node <<'NODE'
-require("dotenv").config();
-
-const { JsonRpcProvider, Wallet, formatEther } = require("ethers");
-
-async function main() {
-
-  if (!process.env.RPC_URL || !process.env.PRIVATE_KEY) {
-    throw new Error("Configure RPC_URL e PRIVATE_KEY no .env");
-  }
-
-  const provider = new JsonRpcProvider(process.env.RPC_URL);
-
-  const network = await provider.getNetwork();
-
-  if (network.chainId !== 137n) {
-    throw new Error("RPC não pertence à Polygon Mainnet.");
-  }
-
-  const wallet = new Wallet(
-    process.env.PRIVATE_KEY,
-    provider
-  );
-
-  const balance = await provider.getBalance(wallet.address);
-
-  console.log("Rede: Polygon Mainnet");
-  console.log("Chain ID:", network.chainId.toString());
-  console.log("Carteira:", wallet.address);
-  console.log("Saldo POL:", formatEther(balance));
-
-  if (balance === 0n) {
-    console.log("ATENÇÃO: carteira sem POL para gas.");
-  }
-}
-
-main().catch(error => {
-  console.error("ERRO:", error.message);
-  process.exitCode = 1;
-});
-NODE
-EOF
-
-chmod +x verificar_carteira.sh
-
-# ============================================================
-# ARQUIVO .ENV
-# ============================================================
-
-if [[ ! -f .env ]]; then
-
-  cat > .env <<'EOF'
+cat > .env <<'EOF'
 RPC_URL=https://polygon-bor-rpc.publicnode.com
 PRIVATE_KEY=
 EOF
 
-  chmod 600 .env
-
-fi
+chmod 600 .env
 
 cat > .env.example <<'EOF'
 RPC_URL=https://polygon-bor-rpc.publicnode.com
@@ -909,6 +1026,10 @@ PRIVATE_KEY=
 EOF
 
 chmod 600 .env.example
+
+# ============================================================
+# GITIGNORE
+# ============================================================
 
 cat > .gitignore <<'EOF'
 node_modules/
@@ -931,10 +1052,10 @@ echo "INSTALANDO DEPENDÊNCIAS"
 echo "======================================"
 
 npm install \
-  --no-audit \
-  --no-fund \
-  --fetch-retries=5 \
-  --fetch-timeout=300000
+    --no-audit \
+    --no-fund \
+    --fetch-retries=5 \
+    --fetch-timeout=300000
 
 # ============================================================
 # COMPILAÇÃO
@@ -973,68 +1094,72 @@ echo "       STABLECOIN - INSTRUÇÕES"
 echo "=================================================="
 
 echo
-echo "1. Configure o arquivo .env"
+echo "1. Configure o arquivo .env:"
 echo
 echo "   nano .env"
 echo
-echo "2. Informe sua RPC e PRIVATE_KEY."
+echo "2. Informe RPC_URL e PRIVATE_KEY."
 echo
 echo "3. Coloque POL na carteira implantadora."
 echo
 echo "4. Verifique a carteira:"
 echo
-echo "   ./verificar_carteira.sh"
+echo "   npm run wallet"
 echo
-echo "5. Faça os testes:"
+echo "5. Execute os testes:"
 echo
 echo "   npm test"
 echo
-echo "6. Faça a implantação na Polygon:"
+echo "6. Implante na Polygon:"
 echo
 echo "   npm run deploy:polygon"
 echo
-echo "7. Consulte o contrato em deployments/polygon.json"
-echo
-echo "8. Consulte as reservas:"
+echo "7. Consulte as reservas:"
 echo
 echo "   npm run reserves"
 echo
 echo "=================================================="
-echo "       COMO FUNCIONA A STABLECOIN"
+echo "       FUNCIONAMENTO"
 echo "=================================================="
 echo
-echo "1. O usuário possui USDC na Polygon."
+echo "1. O usuário possui o token de referência."
 echo
-echo "2. Aprova o contrato para utilizar seus USDC."
+echo "2. Aprova o contrato para utilizar esse token."
 echo
 echo "3. Chama deposit(quantidade)."
 echo
-echo "4. O contrato recebe USDC e emite a mesma"
-echo "   quantidade de stablecoins."
+echo "4. O contrato recebe o colateral e emite"
+echo "   a mesma quantidade da sua moeda."
 echo
 echo "5. Para resgatar, chama redeem(quantidade)."
 echo
-echo "6. O contrato queima os tokens e devolve USDC."
+echo "6. O contrato queima sua moeda e devolve"
+echo "   o token de referência."
 echo
 echo "=================================================="
 echo "       QUICKSWAP"
 echo "=================================================="
 echo
-echo "Depois de implantar e auditar o contrato:"
+echo "Não é obrigatório criar uma pool."
 echo
-echo "1. Acesse https://quickswap.exchange"
-echo "2. Conecte sua carteira na Polygon."
-echo "3. Acesse Pool / Liquidity."
-echo "4. Selecione o USDC oficial."
-echo "5. Selecione o endereço da sua stablecoin."
-echo "6. Crie o pool e forneça liquidez."
+echo "Se quiser negociação livre, poderá criar"
+echo "uma pool com o token de referência."
 echo
-echo "IMPORTANTE:"
-echo "O pool não garante paridade de mercado."
-echo "O preço depende de liquidez e negociação."
+echo "A pool não garante paridade de mercado."
 echo
-echo "O resgate 1:1 ocorre pelo contrato, não pela"
-echo "QuickSwap."
+echo "=================================================="
+echo "       ATENÇÃO"
+echo "=================================================="
+echo
+echo "A moeda é lastreada no token escolhido."
+echo "O contrato não verifica as reservas externas"
+echo "nem garante o valor fiduciário desse token."
+echo
+echo "O proprietário pode pausar depósitos e resgates."
+echo "Enquanto pausado, os resgates ficam bloqueados."
+echo
+echo "Não utilize dinheiro real antes de auditoria"
+echo "independente e avaliação jurídica."
 echo
 echo "=================================================="
 EOF
@@ -1047,24 +1172,27 @@ chmod +x readme.sh
 
 echo
 echo "=================================================="
-echo "       PROJETO STABLECOIN CONCLUÍDO"
+echo "       PROJETO CRIADO COM SUCESSO"
 echo "=================================================="
 
+echo
 echo "Nome: $TOKEN_NAME"
 echo "Símbolo: $TOKEN_SYMBOL"
-echo "Colateral: $COLLATERAL"
-echo "Decimais: 6"
-echo "Emissão inicial: ZERO"
+echo "Token de referência: $COLLATERAL_SYMBOL"
+echo "Contrato de referência: $COLLATERAL"
+echo "Decimais: serão consultados na blockchain"
+echo "Supply inicial: ZERO"
 echo
 echo "Diretório: $PROJECT_DIR"
 echo
 echo "Contratos:"
 echo "  contracts/Stablecoin.sol"
-echo "  contracts/MockUSDC.sol"
+echo "  contracts/MockCollateral.sol"
 echo
 echo "Scripts:"
 echo "  scripts/deploy.js"
 echo "  scripts/reserves.js"
+echo "  scripts/wallet.js"
 echo
 echo "Testes:"
 echo "  test/Stablecoin.js"
@@ -1073,17 +1201,27 @@ echo "=================================================="
 echo "PRÓXIMAS ETAPAS"
 echo "=================================================="
 echo
-echo "1. Configure: nano $PROJECT_DIR/.env"
-echo "2. Verifique: cd $PROJECT_DIR"
-echo "3. Carteira: ./verificar_carteira.sh"
-echo "4. Instruções: ./readme.sh"
-echo "5. Implantação: npm run deploy:polygon"
+echo "1. Configure:"
+echo "   nano $PROJECT_DIR/.env"
 echo
-echo "ATENÇÃO: os testes locais não substituem auditoria."
-echo "Não utilize dinheiro real antes de auditoria"
-echo "independente e validação jurídica."
+echo "2. Entre no projeto:"
+echo "   cd $PROJECT_DIR"
+echo
+echo "3. Verifique a carteira:"
+echo "   npm run wallet"
+echo
+echo "4. Consulte as instruções:"
+echo "   ./readme.sh"
+echo
+echo "5. Implante:"
+echo "   npm run deploy:polygon"
+echo
+echo "6. Consulte as reservas:"
+echo "   npm run reserves"
 echo
 echo "=================================================="
-EOF
-chmod +x instalar_stablecoin.sh
-```
+echo "IMPORTANTE:"
+echo "Os testes locais não substituem auditoria."
+echo "Confirme o contrato do token de referência."
+echo "Proteja sua chave privada."
+echo "=================================================="
