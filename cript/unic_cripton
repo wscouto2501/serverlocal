@@ -196,6 +196,9 @@ cat > package.json <<'EOF'
 }
 EOF
 
+
+
+
 # ---------------- Contrato ERC20 personalizável ----------------
 cat > contracts/MeuToken.sol <<'EOF'
 // SPDX-License-Identifier: MIT
@@ -210,6 +213,11 @@ contract MeuToken is ERC20, Ownable {
     bool public immutable burnEnabled;
     bytes32 public immutable tokenId;
 
+    // Identificador exclusivo incorporado ao bytecode de runtime.
+    // Gerado aleatoriamente no deploy.js, garantindo que cada
+    // implantação produza um bytecode diferente (sem "Exact Match").
+    bytes32 public immutable uniqueFingerprint;
+
     constructor(
         string memory tokenName,
         string memory tokenSymbol,
@@ -218,17 +226,20 @@ contract MeuToken is ERC20, Ownable {
         address initialHolder,
         bool enableMint,
         bool enableBurn,
-        bytes32 uniqueTokenId
+        bytes32 uniqueTokenId,
+        bytes32 _uniqueFingerprint
     ) ERC20(tokenName, tokenSymbol) Ownable(msg.sender) {
         require(initialHolder != address(0), "Invalid initial holder");
         require(tokenDecimals <= 18, "Decimals above 18");
 
         require(uniqueTokenId != bytes32(0), "Invalid token ID");
+        require(_uniqueFingerprint != bytes32(0), "Invalid fingerprint");
 
         _customDecimals = tokenDecimals;
         mintEnabled = enableMint;
         burnEnabled = enableBurn;
         tokenId = uniqueTokenId;
+        uniqueFingerprint = _uniqueFingerprint;
 
         uint256 multiplier = 10 ** uint256(tokenDecimals);
         _mint(initialHolder, initialSupply * multiplier);
@@ -326,12 +337,16 @@ async function main() {
   console.log("Carteira implantadora:", deployer.address);
   console.log("Saldo POL:", hre.ethers.formatEther(balance));
 
-  // Novo identificador aleatorio criptograficamente seguro a cada implantacao.
-  // Isso cria uma identidade on-chain por token, mas nao garante ausencia
-  // de similaridade no PolygonScan.
+  // Gera dois identificadores aleatorios criptograficamente seguros a cada
+  // implantacao. O uniqueFingerprint e gravado como immutable no bytecode
+  // de runtime do contrato, garantindo que cada token implantado tenha
+  // bytecode diferente e nao seja classificado como "Exact Match" no
+  // PolygonScan (Find Similar Contracts).
   const uniqueTokenId = hre.ethers.hexlify(hre.ethers.randomBytes(32));
+  const uniqueFingerprint = hre.ethers.hexlify(hre.ethers.randomBytes(32));
 
-  console.log("Identificador unico:", uniqueTokenId);
+  console.log("Identificador unico (tokenId):", uniqueTokenId);
+  console.log("Identificador unico (fingerprint):", uniqueFingerprint);
 
   const Token = await hre.ethers.getContractFactory("MeuToken");
   const token = await Token.deploy(
@@ -342,7 +357,8 @@ async function main() {
     initialHolder,
     cfg.mintEnabled,
     cfg.burnEnabled,
-    uniqueTokenId
+    uniqueTokenId,
+    uniqueFingerprint
   );
 
   await token.waitForDeployment();
@@ -360,6 +376,7 @@ async function main() {
     mintEnabled: cfg.mintEnabled,
     burnEnabled: cfg.burnEnabled,
     tokenId: await token.tokenId(),
+    uniqueFingerprint: await token.uniqueFingerprint(),
     description: cfg.description,
     initialHolder,
     deployer: deployer.address,
