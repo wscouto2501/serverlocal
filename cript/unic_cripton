@@ -716,6 +716,7 @@ npm install \
   --fetch-retry-maxtimeout=120000 \
   --fetch-timeout=300000
 
+clear
 echo
 echo "COMPILANDO CONTRATO..."
 npx hardhat compile
@@ -723,6 +724,9 @@ npx hardhat compile
 echo
 echo "EXECUTANDO TESTES..."
 npx hardhat test
+
+echo
+echo "EXECUTANDO AUDITORIA..."
 npm audit --omit=dev
 
 cat > readme.sh <<'EOF'
