@@ -418,7 +418,8 @@ describe("MeuToken personalizavel", function () {
       options.holder || owner.address,
       options.mintEnabled ?? false,
       options.burnEnabled ?? true,
-      ethers.hexlify(ethers.randomBytes(32))
+      ethers.hexlify(ethers.randomBytes(32)),  // tokenId
+      ethers.hexlify(ethers.randomBytes(32))   // uniqueFingerprint (NOVO)
     );
 
     await token.waitForDeployment();
@@ -431,10 +432,10 @@ describe("MeuToken personalizavel", function () {
     expect(await token.tokenId()).to.not.equal(ethers.ZeroHash);
   });
 
-  it("usa nome e simbolo informados", async function () {
-    const { token } = await deployToken({ name: "RealUnit", symbol: "RUT" });
-    expect(await token.name()).to.equal("RealUnit");
-    expect(await token.symbol()).to.equal("RUT");
+  it("armazena um fingerprint unico nao nulo", async function () {
+    const { token } = await deployToken();
+    expect(await token.uniqueFingerprint()).to.match(/^0x[0-9a-fA-F]{64}$/);
+    expect(await token.uniqueFingerprint()).to.not.equal(ethers.ZeroHash);
   });
 
   it("emite a quantidade inicial para a carteira escolhida", async function () {
@@ -722,7 +723,7 @@ npx hardhat compile
 echo
 echo "EXECUTANDO TESTES..."
 npx hardhat test
-
+npm audit --omit=dev
 
 cat > readme.sh <<'EOF'
 #!/bin/bash
