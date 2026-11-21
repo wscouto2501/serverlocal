@@ -1,0 +1,835 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+# ============================================================
+# REALUNIT / TOKEN PERSONALIZADO - MULTIRREDE EVM
+# Este instalador solicita os dados do token e da rede antes de compilar.
+# ============================================================
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Execute como root: sudo bash instalar_moeda.sh"
+  exit 1
+fi
+
+# ---------------- Node.js 20+ ----------------
+if ! command -v node >/dev/null 2>&1 || \
+   ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
+  echo "Instalando Node.js 20..."
+  apt-get update
+  apt-get install -y ca-certificates curl
+  curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+  bash /tmp/nodesource_setup.sh
+  apt-get install -y nodejs
+  rm -f /tmp/nodesource_setup.sh
+fi
+
+echo "Node.js: $(node -v)"
+echo "NPM: $(npm -v)"
+
+
+# ---------------- Catálogo de redes ----------------
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PARAM_FILE="${SCRIPT_DIR}/parametro"
+PARAM_URL="https://raw.githubusercontent.com/wscouto2501/serverlocal/main/cript/parametro"
+
+if [[ ! -s "$PARAM_FILE" ]]; then
+  echo "Arquivo parametro não encontrado ao lado do instalador. Baixando do GitHub..."
+  if command -v curl >/dev/null 2>&1; then
+    curl -fsSL "$PARAM_URL" -o /tmp/unic_cripton_parametro.json || {
+      echo "ERRO: não foi possível obter o catálogo de redes: $PARAM_URL"
+      exit 1
+    }
+    PARAM_FILE="/tmp/unic_cripton_parametro.json"
+  else
+    echo "ERRO: instale curl ou coloque o arquivo parametro ao lado de unic_cripton."
+    exit 1
+  fi
+fi
+
+node -e '
+const fs = require("fs");
+const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+if (!Array.isArray(p.networks) || !p.networks.length) throw new Error("Catálogo sem redes.");
+' "$PARAM_FILE" || {
+  echo "ERRO: arquivo parametro inválido."
+  exit 1
+}
+
+mapfile -t AVAILABLE_NETWORKS < <(node - "$PARAM_FILE" <<'NODE'
+const fs = require("fs");
+const p = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+for (const n of p.networks) {
+  if (n.enabled === true && n.deploySupported === true && n.family === "evm" && n.module === "evm") {
+    console.log([n.key, n.name, n.chainId, n.nativeCurrency.symbol, n.rpc.default, n.explorer].join("|"));
+  }
+}
+NODE
+)
+
+if [[ "${#AVAILABLE_NETWORKS[@]}" -eq 0 ]]; then
+  echo "ERRO: o catálogo não possui redes EVM habilitadas para implantação."
+  exit 1
+fi
+
+echo
+echo "=================================================="
+echo "          SELECIONE A REDE BLOCKCHAIN"
+echo "=================================================="
+for i in "${!AVAILABLE_NETWORKS[@]}"; do
+  IFS='|' read -r _key _name _chain _native _rpc _explorer <<< "${AVAILABLE_NETWORKS[$i]}"
+  printf "%2d) %s (Chain ID: %s | moeda de gas: %s)\n" "$((i+1))" "$_name" "$_chain" "$_native"
+done
+echo
+read -r -p "Número da rede [1]: " NETWORK_CHOICE
+NETWORK_CHOICE="${NETWORK_CHOICE:-1}"
+if [[ ! "$NETWORK_CHOICE" =~ ^[0-9]+$ ]] || (( NETWORK_CHOICE < 1 || NETWORK_CHOICE > ${#AVAILABLE_NETWORKS[@]} )); then
+  echo "ERRO: opção de rede inválida."
+  exit 1
+fi
+
+IFS='|' read -r NETWORK_KEY NETWORK_NAME NETWORK_CHAIN_ID NATIVE_SYMBOL NETWORK_DEFAULT_RPC NETWORK_EXPLORER <<< "${AVAILABLE_NETWORKS[$((NETWORK_CHOICE-1))]}"
+echo "Rede selecionada: ${NETWORK_NAME} (Chain ID ${NETWORK_CHAIN_ID})"
+
+echo
+echo "=================================================="
+echo "       CONFIGURAÇÃO DA SUA CRIPTOMOEDA"
+echo "=================================================="
+echo "Preencha os dados. A implantação só ocorrerá"
+echo "posteriormente, quando você executar o comando."
+echo
+
+
+read -r -p "Nome da moeda [RealUnit]: " TOKEN_NAME
+TOKEN_NAME="${TOKEN_NAME:-RealUnit}"
+
+read -r -p "Símbolo/ticker [RUT]: " TOKEN_SYMBOL
+TOKEN_SYMBOL="${TOKEN_SYMBOL:-RUT}"
+
+read -r -p "Quantidade inicial de tokens [10000000]: " INITIAL_SUPPLY
+INITIAL_SUPPLY="${INITIAL_SUPPLY:-10000000}"
+
+read -r -p "Casas decimais (0 a 18) [18]: " TOKEN_DECIMALS
+TOKEN_DECIMALS="${TOKEN_DECIMALS:-18}"
+
+read -r -p "Carteira que receberá a emissão inicial (vazio = carteira implantadora): " INITIAL_HOLDER
+
+read -r -p "Permitir novas emissões pelo administrador? (s/N): " MINT_ANSWER
+MINT_ANSWER="${MINT_ANSWER:-N}"
+
+read -r -p "Permitir que qualquer titular queime seus próprios tokens? (S/n): " BURN_ANSWER
+BURN_ANSWER="${BURN_ANSWER:-S}"
+
+read -r -p "Descrição do projeto (opcional): " TOKEN_DESCRIPTION
+
+# ==================================================
+# CRIAR DIRETÓRIO COM O NOME DA CRIPTOMOEDA
+# ==================================================
+
+# Converter nome para minúsculas e remover caracteres especiais
+TOKEN_DIR=$(echo "$TOKEN_NAME" \
+    | iconv -f UTF-8 -t ASCII//TRANSLIT \
+    | tr '[:upper:]' '[:lower:]' \
+    | sed 's/[^a-z0-9]/-/g; s/-\+/-/g; s/^-//; s/-$//')
+
+if [[ -z "$TOKEN_DIR" ]]; then
+    echo "ERRO: nome inválido para criar o diretório."
+    exit 1
+fi
+
+PROJECT_DIR="/root/$TOKEN_DIR"
+
+if [[ -d "$PROJECT_DIR" ]]; then
+    echo "ERRO: o diretório $PROJECT_DIR já existe."
+    exit 1
+fi
+
+mkdir -p "$PROJECT_DIR"
+cd "$PROJECT_DIR"
+
+mkdir -p contracts scripts test deployments
+
+echo
+echo "=========================================="
+echo "PROJETO CRIADO"
+echo "=========================================="
+echo "Nome da moeda: $TOKEN_NAME"
+echo "Símbolo: $TOKEN_SYMBOL"
+echo "Diretório: $PROJECT_DIR"
+echo "=========================================="
+
+
+
+# Validações básicas
+if [[ ! "$TOKEN_NAME" =~ ^[[:print:]]{1,64}$ ]]; then
+  echo "ERRO: nome inválido ou maior que 64 caracteres."
+  exit 1
+fi
+
+if [[ ! "$TOKEN_SYMBOL" =~ ^[A-Za-z0-9]{1,12}$ ]]; then
+  echo "ERRO: símbolo deve conter de 1 a 12 letras/números."
+  exit 1
+fi
+
+if [[ ! "$INITIAL_SUPPLY" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$INITIAL_SUPPLY" == "0" ]]; then
+  echo "ERRO: quantidade inicial inválida."
+  exit 1
+fi
+
+if [[ ! "$TOKEN_DECIMALS" =~ ^([0-9]|1[0-8])$ ]]; then
+  echo "ERRO: casas decimais deve ser um número entre 0 e 18."
+  exit 1
+fi
+
+if [[ -n "$INITIAL_HOLDER" ]] && \
+   [[ ! "$INITIAL_HOLDER" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+  echo "ERRO: endereço da carteira inválido."
+  exit 1
+fi
+
+MINT_ENABLED=false
+[[ "$MINT_ANSWER" =~ ^[Ss]$ ]] && MINT_ENABLED=true
+
+BURN_ENABLED=false
+[[ ! "$BURN_ANSWER" =~ ^[Nn]$ ]] && BURN_ENABLED=true
+
+# Grava configuração JSON com escape seguro feito pelo Node.
+TOKEN_NAME="$TOKEN_NAME" \
+TOKEN_SYMBOL="$TOKEN_SYMBOL" \
+INITIAL_SUPPLY="$INITIAL_SUPPLY" \
+TOKEN_DECIMALS="$TOKEN_DECIMALS" \
+INITIAL_HOLDER="$INITIAL_HOLDER" \
+MINT_ENABLED="$MINT_ENABLED" \
+BURN_ENABLED="$BURN_ENABLED" \
+TOKEN_DESCRIPTION="$TOKEN_DESCRIPTION" \
+NETWORK_KEY="$NETWORK_KEY" \
+NETWORK_NAME="$NETWORK_NAME" \
+NETWORK_CHAIN_ID="$NETWORK_CHAIN_ID" \
+NATIVE_SYMBOL="$NATIVE_SYMBOL" \
+NETWORK_EXPLORER="$NETWORK_EXPLORER" \
+node <<'NODE'
+const fs = require("fs");
+const config = {
+  name: process.env.TOKEN_NAME,
+  symbol: process.env.TOKEN_SYMBOL,
+  initialSupply: process.env.INITIAL_SUPPLY,
+  decimals: Number(process.env.TOKEN_DECIMALS),
+  initialHolder: process.env.INITIAL_HOLDER || "",
+  mintEnabled: process.env.MINT_ENABLED === "true",
+  burnEnabled: process.env.BURN_ENABLED === "true",
+  description: process.env.TOKEN_DESCRIPTION || "",
+  network: {
+    key: process.env.NETWORK_KEY,
+    name: process.env.NETWORK_NAME,
+    family: "evm",
+    module: "evm",
+    chainId: Number(process.env.NETWORK_CHAIN_ID),
+    nativeSymbol: process.env.NATIVE_SYMBOL,
+    explorer: process.env.NETWORK_EXPLORER
+  }
+};
+fs.writeFileSync(".token-config.json", JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+NODE
+
+echo
+echo "---------------- RESUMO ----------------"
+node -e '
+const c=require("./.token-config.json");
+console.log("Nome:",c.name);
+console.log("Símbolo:",c.symbol);
+console.log("Emissão inicial:",c.initialSupply);
+console.log("Casas decimais:",c.decimals);
+console.log("Carteira inicial:",c.initialHolder || "Carteira que implantar");
+console.log("Novas emissões:",c.mintEnabled ? "Permitidas ao administrador" : "Desativadas");
+console.log("Queima:",c.burnEnabled ? "Ativada" : "Desativada");
+console.log("Descrição:",c.description || "(não informada)");
+'
+echo "----------------------------------------"
+read -r -p "Confirma essa configuração? (s/N): " CONFIRM
+if [[ ! "$CONFIRM" =~ ^[Ss]$ ]]; then
+  echo "Configuração cancelada. Execute o instalador novamente para preencher."
+  exit 1
+fi
+
+# ---------------- package.json ----------------
+cat > package.json <<'EOF'
+{
+  "name": "token-personalizado-multirede",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Criador de tokens ERC20 em redes EVM configuradas no catálogo",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy": "hardhat run scripts/deploy.js --network selected"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "5.0.0",
+    "dotenv": "16.4.5",
+    "hardhat": "2.28.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "5.0.2",
+    "ethers": "^6.13.0"
+  }
+}
+EOF
+
+# ---------------- Contrato ERC20 personalizável ----------------
+cat > contracts/MeuToken.sol <<'EOF'
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract MeuToken is ERC20, Ownable {
+    uint8 private immutable _customDecimals;
+    bool public immutable mintEnabled;
+    bool public immutable burnEnabled;
+    bytes32 public immutable tokenId;
+
+    // Identificador exclusivo incorporado ao bytecode de runtime.
+    // Gerado aleatoriamente no deploy.js, garantindo que cada
+    // implantação produza um bytecode diferente (sem "Exact Match").
+    bytes32 public immutable uniqueFingerprint;
+
+    constructor(
+        string memory tokenName,
+        string memory tokenSymbol,
+        uint256 initialSupply,
+        uint8 tokenDecimals,
+        address initialHolder,
+        bool enableMint,
+        bool enableBurn,
+        bytes32 uniqueTokenId,
+        bytes32 _uniqueFingerprint
+    ) ERC20(tokenName, tokenSymbol) Ownable(msg.sender) {
+        require(initialHolder != address(0), "Invalid initial holder");
+        require(tokenDecimals <= 18, "Decimals above 18");
+
+        require(uniqueTokenId != bytes32(0), "Invalid token ID");
+        require(_uniqueFingerprint != bytes32(0), "Invalid fingerprint");
+
+        _customDecimals = tokenDecimals;
+        mintEnabled = enableMint;
+        burnEnabled = enableBurn;
+        tokenId = uniqueTokenId;
+        uniqueFingerprint = _uniqueFingerprint;
+
+        uint256 multiplier = 10 ** uint256(tokenDecimals);
+        _mint(initialHolder, initialSupply * multiplier);
+    }
+
+    function decimals() public view override returns (uint8) {
+        return _customDecimals;
+    }
+
+    // Somente o proprietario pode emitir novos tokens, se a opcao foi ativada.
+    function mint(address to, uint256 amount) external onlyOwner {
+        require(mintEnabled, "Mint disabled");
+        require(to != address(0), "Invalid recipient");
+        _mint(to, amount);
+    }
+
+    // Queima tokens da propria carteira do titular, se ativada.
+    function burn(uint256 amount) external {
+        require(burnEnabled, "Burn disabled");
+        _burn(msg.sender, amount);
+    }
+}
+EOF
+
+# ---------------- Hardhat multirrede EVM ----------------
+cat > hardhat.config.js <<'EOF'
+require("@nomicfoundation/hardhat-toolbox");
+require("dotenv").config();
+const fs = require("fs");
+
+const tokenConfig = JSON.parse(fs.readFileSync(".token-config.json", "utf8"));
+const selected = tokenConfig.network;
+
+if (!selected || selected.family !== "evm" || selected.module !== "evm" || !selected.chainId) {
+  throw new Error("Configuração de rede EVM ausente ou inválida em .token-config.json");
+}
+if (!process.env.RPC_URL) {
+  throw new Error("RPC_URL não configurada no .env");
+}
+
+module.exports = {
+  solidity: {
+    version: "0.8.20",
+    settings: { optimizer: { enabled: true, runs: 200 } }
+  },
+  networks: {
+    selected: {
+      url: process.env.RPC_URL,
+      chainId: Number(selected.chainId),
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
+    }
+  }
+};
+EOF
+
+# ---------------- Implantação multirrede EVM ----------------
+cat > scripts/deploy.js <<'EOF'
+const hre = require("hardhat");
+const fs = require("fs");
+const path = require("path");
+
+async function main() {
+  if (!process.env.PRIVATE_KEY) {
+    throw new Error("PRIVATE_KEY não configurada no arquivo .env");
+  }
+
+  const configPath = path.join(__dirname, "../.token-config.json");
+  if (!fs.existsSync(configPath)) {
+    throw new Error("Configuração .token-config.json não encontrada. Execute o instalador.");
+  }
+
+  const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  const selected = cfg.network;
+  if (!selected || selected.family !== "evm" || selected.module !== "evm") {
+    throw new Error("Esta versão do instalador suporta implantação apenas em redes EVM.");
+  }
+
+  const network = await hre.ethers.provider.getNetwork();
+  const expectedChainId = BigInt(selected.chainId);
+  if (network.chainId !== expectedChainId) {
+    throw new Error(`Rede incorreta: ${network.chainId}. Esperado: ${expectedChainId} (${selected.name}).`);
+  }
+
+  const [deployer] = await hre.ethers.getSigners();
+  if (!deployer) throw new Error("Carteira de implantação não carregada.");
+  const balance = await hre.ethers.provider.getBalance(deployer.address);
+  if (balance === 0n) {
+    throw new Error(`A carteira não possui ${selected.nativeSymbol} para pagar o gas.`);
+  }
+
+  const initialHolder = cfg.initialHolder || deployer.address;
+  if (!hre.ethers.isAddress(initialHolder)) {
+    throw new Error("Endereço inicial inválido.");
+  }
+
+  console.log("====================================");
+  console.log(`IMPLANTANDO TOKEN EM ${selected.name.toUpperCase()}`);
+  console.log("====================================");
+  console.log("Nome:", cfg.name);
+  console.log("Símbolo:", cfg.symbol);
+  console.log("Emissão inicial:", cfg.initialSupply);
+  console.log("Decimais:", cfg.decimals);
+  console.log("Carteira inicial:", initialHolder);
+  console.log("Carteira implantadora:", deployer.address);
+  console.log(`Saldo ${selected.nativeSymbol}:`, hre.ethers.formatEther(balance));
+
+  const uniqueTokenId = hre.ethers.hexlify(hre.ethers.randomBytes(32));
+  const uniqueFingerprint = hre.ethers.hexlify(hre.ethers.randomBytes(32));
+  console.log("Identificador único (tokenId):", uniqueTokenId);
+  console.log("Identificador único (fingerprint):", uniqueFingerprint);
+
+  const Token = await hre.ethers.getContractFactory("MeuToken");
+  const token = await Token.deploy(
+    cfg.name, cfg.symbol, cfg.initialSupply, cfg.decimals, initialHolder,
+    cfg.mintEnabled, cfg.burnEnabled, uniqueTokenId, uniqueFingerprint
+  );
+  await token.waitForDeployment();
+
+  const address = await token.getAddress();
+  const tx = token.deploymentTransaction();
+  const explorerBase = String(selected.explorer || "").replace(/\/+$/, "");
+  const result = {
+    network: selected.name,
+    networkKey: selected.key,
+    chainId: Number(selected.chainId),
+    nativeCurrency: selected.nativeSymbol,
+    name: await token.name(),
+    symbol: await token.symbol(),
+    totalSupply: (await token.totalSupply()).toString(),
+    decimals: Number(await token.decimals()),
+    mintEnabled: cfg.mintEnabled,
+    burnEnabled: cfg.burnEnabled,
+    tokenId: await token.tokenId(),
+    uniqueFingerprint: await token.uniqueFingerprint(),
+    description: cfg.description,
+    initialHolder,
+    deployer: deployer.address,
+    contractAddress: address,
+    transactionHash: tx ? tx.hash : null,
+    explorer: explorerBase ? `${explorerBase}/address/${address}` : null,
+    deployedAt: new Date().toISOString()
+  };
+
+  const outputDir = path.join(__dirname, `../deployments/${selected.key}`);
+  fs.mkdirSync(outputDir, { recursive: true });
+  const output = path.join(outputDir, "deployment.json");
+  fs.writeFileSync(output, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
+
+  console.log("====================================");
+  console.log("TOKEN PUBLICADO!");
+  console.log(JSON.stringify(result, null, 2));
+  console.log("Registro salvo em:", output);
+}
+
+main().catch(error => {
+  console.error("ERRO:", error);
+  process.exitCode = 1;
+});
+EOF
+
+# ---------------- Testes ----------------
+cat > test/MeuToken.js <<'EOF'
+const { expect } = require("chai");
+const { ethers } = require("hardhat");
+
+describe("MeuToken personalizavel", function () {
+  async function deployToken(options = {}) {
+    const [owner, other] = await ethers.getSigners();
+    const Token = await ethers.getContractFactory("MeuToken");
+
+    const token = await Token.deploy(
+      options.name || "Minha Moeda",
+      options.symbol || "MMC",
+      options.supply || "10000000",
+      options.decimals ?? 18,
+      options.holder || owner.address,
+      options.mintEnabled ?? false,
+      options.burnEnabled ?? true,
+      ethers.hexlify(ethers.randomBytes(32)),  // tokenId
+      ethers.hexlify(ethers.randomBytes(32))   // uniqueFingerprint (NOVO)
+    );
+
+    await token.waitForDeployment();
+    return { token, owner, other };
+  }
+
+  it("armazena um identificador unico nao nulo", async function () {
+    const { token } = await deployToken();
+    expect(await token.tokenId()).to.match(/^0x[0-9a-fA-F]{64}$/);
+    expect(await token.tokenId()).to.not.equal(ethers.ZeroHash);
+  });
+
+  it("armazena um fingerprint unico nao nulo", async function () {
+    const { token } = await deployToken();
+    expect(await token.uniqueFingerprint()).to.match(/^0x[0-9a-fA-F]{64}$/);
+    expect(await token.uniqueFingerprint()).to.not.equal(ethers.ZeroHash);
+  });
+
+  it("emite a quantidade inicial para a carteira escolhida", async function () {
+    const { token, other } = await deployToken({
+      supply: "2500",
+      holder: undefined
+    });
+    expect(await token.balanceOf(other.address)).to.equal(0n);
+    expect(await token.totalSupply()).to.equal(ethers.parseUnits("2500", 18));
+  });
+
+  it("usa as casas decimais configuradas", async function () {
+    const { token } = await deployToken({ decimals: 6 });
+    expect(await token.decimals()).to.equal(6);
+    expect(await token.totalSupply()).to.equal(10_000_000n * 10n ** 6n);
+  });
+
+  it("permite mint apenas quando habilitado e pelo proprietario", async function () {
+    const { token, other } = await deployToken({ mintEnabled: true });
+    await token.mint(other.address, 100n);
+    expect(await token.balanceOf(other.address)).to.equal(100n);
+  });
+
+  it("bloqueia mint quando desabilitado", async function () {
+    const { token, other } = await deployToken({ mintEnabled: false });
+    await expect(token.mint(other.address, 100n)).to.be.revertedWith("Mint disabled");
+  });
+
+  it("permite queima quando habilitada", async function () {
+    const { token, owner } = await deployToken({ burnEnabled: true });
+    await token.burn(ethers.parseUnits("100", 18));
+    expect(await token.balanceOf(owner.address)).to.equal(ethers.parseUnits("9999900", 18));
+  });
+});
+EOF
+
+# ---------------- .env ----------------
+if [[ ! -f .env ]]; then
+  cat > .env <<EOF
+RPC_URL=${NETWORK_DEFAULT_RPC}
+PRIVATE_KEY=
+EOF
+  chmod 600 .env
+else
+  chmod 600 .env
+  echo "Arquivo .env existente preservado."
+  echo "Confira se RPC_URL corresponde à rede selecionada: ${NETWORK_NAME}."
+fi
+
+cat > .env.example <<EOF
+RPC_URL=${NETWORK_DEFAULT_RPC}
+PRIVATE_KEY=
+EOF
+
+cat > .gitignore <<'EOF'
+node_modules/
+.env
+.token-config.json
+cache/
+artifacts/
+coverage/
+EOF
+
+# ---------------- Verificar carteira ----------------
+# ---------------- Verificar carteira ----------------
+cat > verificar_carteira.sh <<EOF
+#!/bin/bash
+set -Eeuo pipefail
+PROJECT_DIR="${PROJECT_DIR}"
+cd "\${PROJECT_DIR}"
+
+node <<'NODE'
+require("dotenv").config();
+const fs = require("fs");
+const { JsonRpcProvider, Wallet, formatEther } = require("ethers");
+
+async function main() {
+  if (!process.env.RPC_URL || !process.env.PRIVATE_KEY) {
+    throw new Error("Configure RPC_URL e PRIVATE_KEY no .env.");
+  }
+  const cfg = JSON.parse(fs.readFileSync(".token-config.json", "utf8"));
+  const provider = new JsonRpcProvider(process.env.RPC_URL);
+  const network = await provider.getNetwork();
+  const expected = BigInt(cfg.network.chainId);
+  if (network.chainId !== expected) {
+    throw new Error(\`Rede incorreta: \${network.chainId}. Esperado \${expected} (\${cfg.network.name}).\`);
+  }
+  const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
+  const balance = await provider.getBalance(wallet.address);
+  console.log("Rede:", cfg.network.name);
+  console.log("Chain ID:", network.chainId.toString());
+  console.log("Carteira:", wallet.address);
+  console.log(\`Saldo \${cfg.network.nativeSymbol}:\`, formatEther(balance));
+  if (balance === 0n) console.log("ATENÇÃO: carteira sem saldo para gas.");
+}
+main().catch(error => {
+  console.error("ERRO:", error.message);
+  process.exitCode = 1;
+});
+NODE
+EOF
+chmod +x verificar_carteira.sh
+
+
+
+cat > validar_moeda.sh <<'PUBLICAR_EOF'
+#!/bin/bash
+set -Eeuo pipefail
+
+# ============================================================
+# VALIDADOR AUXILIAR DE TOKEN EVM
+# Verifica RPC, carteira e existência de um contrato em uma rede EVM.
+# ============================================================
+
+if [[ "${EUID}" -ne 0 ]]; then
+  echo "Execute como root: sudo bash validar_moeda.sh"
+  exit 1
+fi
+
+# ---------------- Variáveis de ambiente / diretórios ----------------
+PROJECT_DIR="__PROJECT_DIR__"
+BUILD_DIR="${PROJECT_DIR}/build"
+LOG_DIR="${PROJECT_DIR}/logs"
+mkdir -p "${BUILD_DIR}" "${LOG_DIR}"
+
+# ---------------- Node.js 20+ ----------------
+if ! command -v node >/dev/null 2>&1 || \
+   ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
+  echo "Instalando Node.js 20..."
+  apt-get update
+  apt-get install -y ca-certificates curl
+  curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+  bash /tmp/nodesource_setup.sh
+  apt-get install -y nodejs
+fi
+
+echo "Node.js: $(node -v)"
+echo "NPM:     $(npm -v)"
+
+# ---------------- Dependências do projeto ----------------
+cd "${PROJECT_DIR}"
+
+if [[ ! -f package.json ]]; then
+  echo "Inicializando projeto Node..."
+  npm init -y >/dev/null
+fi
+
+echo "Instalando dependências (ethers, dotenv)..."
+npm install --no-audit --no-fund ethers dotenv 2>&1 | tee -a "${LOG_DIR}/publicar_carteira.log"
+
+# ---------------- Coleta de dados do usuário ----------------
+echo ""
+echo "============================================================"
+echo "  VALIDAÇÃO DE TOKEN - REDE EVM"
+echo "============================================================"
+
+read -rp "RPC da rede EVM que deseja consultar: " RPC_URL
+read -rsp "Chave privada da carteira publicadora (0x...): " PRIVATE_KEY
+read -rp "Endereço do contrato do token (0x...): " TOKEN_ADDRESS
+
+if [[ -z "${RPC_URL}" || -z "${PRIVATE_KEY}" || -z "${TOKEN_ADDRESS}" ]]; then
+  echo "ERRO: todos os campos são obrigatórios."
+  exit 1
+fi
+
+# ---------------- Geração do script de publicação ----------------
+cat > "${PROJECT_DIR}/publicar.js" <<'EOF'
+require("dotenv").config();
+const { ethers } = require("ethers");
+
+async function main() {
+  const rpcUrl        = process.env.RPC_URL;
+  const privateKey    = process.env.PRIVATE_KEY;
+  const tokenAddress  = process.env.TOKEN_ADDRESS;
+
+  if (!rpcUrl || !privateKey || !tokenAddress) {
+    throw new Error("RPC_URL, PRIVATE_KEY e TOKEN_ADDRESS são obrigatórios.");
+  }
+
+  console.log("Conectando à rede...");
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+
+  const network = await provider.getNetwork();
+  console.log(`Rede detectada: ${network.name} (chainId ${network.chainId})`);
+
+  const wallet = new ethers.Wallet(privateKey, provider);
+  console.log(`Carteira publicadora: ${wallet.address}`);
+
+  const balance = await provider.getBalance(wallet.address);
+  console.log(`Saldo da moeda nativa: ${ethers.formatEther(balance)}`);
+
+  if (balance === 0n) {
+    throw new Error("Saldo insuficiente para pagar o gas da rede.");
+  }
+
+  // Verifica se o contrato existe na rede
+  const code = await provider.getCode(tokenAddress);
+  if (code === "0x") {
+    throw new Error(`Nenhum contrato encontrado em ${tokenAddress}`);
+  }
+  console.log("Contrato encontrado. Lendo metadados...");
+
+  // ABI mínima ERC-20
+  const abi = [
+    "function name() view returns (string)",
+    "function symbol() view returns (string)",
+    "function decimals() view returns (uint8)",
+    "function totalSupply() view returns (uint256)",
+    "function balanceOf(address) view returns (uint256)",
+    "function transfer(address,uint256) returns (bool)"
+  ];
+
+  const token = new ethers.Contract(tokenAddress, abi, wallet);
+
+  try {
+    const [name, symbol, decimals, totalSupply] = await Promise.all([
+      token.name(), token.symbol(), token.decimals(), token.totalSupply()
+    ]);
+    console.log("--------------------------------------------");
+    console.log(`Nome:           ${name}`);
+    console.log(`Símbolo:        ${symbol}`);
+    console.log(`Decimais:       ${decimals}`);
+    console.log(`Supply total:   ${ethers.formatUnits(totalSupply, decimals)} ${symbol}`);
+    console.log("--------------------------------------------");
+  } catch (e) {
+    console.warn("Não foi possível ler todos os metadados ERC-20:", e.message);
+  }
+
+  console.log("✅ Publicação da carteira/token validada com sucesso.");
+}
+
+main().catch((err) => {
+  console.error("❌ Falha na publicação:", err.message);
+  process.exit(1);
+});
+EOF
+
+# ---------------- Arquivo .env ----------------
+cat > "${PROJECT_DIR}/.env" <<EOF
+PROJECT_DIR="__PROJECT_DIR__"
+RPC_URL=${RPC_URL}
+PRIVATE_KEY=${PRIVATE_KEY}
+TOKEN_ADDRESS=${TOKEN_ADDRESS}
+EOF
+chmod 600 "${PROJECT_DIR}/.env"
+
+# ---------------- Execução ----------------
+echo ""
+echo "Executando publicação..."
+node "${PROJECT_DIR}/publicar.js" 2>&1 | tee -a "${LOG_DIR}/publicar_carteira.log"
+
+echo ""
+echo "✅ Processo concluído. Log em: ${LOG_DIR}/publicar_carteira.log"
+PUBLICAR_EOF
+
+# Substitui o placeholder pelo caminho real do projeto
+sed -i "s|__PROJECT_DIR__|${PROJECT_DIR}|g" validar_moeda.sh
+chmod +x validar_moeda.sh
+
+
+echo
+echo "=========================================="
+echo "INSTALANDO DEPENDENCIAS"
+echo "=========================================="
+npm install \
+  --fetch-retries=5 \
+  --fetch-retry-mintimeout=20000 \
+  --fetch-retry-maxtimeout=120000 \
+  --fetch-timeout=300000
+
+clear
+echo
+echo "COMPILANDO CONTRATO..."
+npx hardhat compile
+
+echo
+echo "EXECUTANDO TESTES..."
+npx hardhat test
+
+echo
+echo "EXECUTANDO AUDITORIA..."
+npm audit --omit=dev
+
+cat > readme.sh <<'EOF'
+#!/bin/bash
+set -Eeuo pipefail
+cd "$(dirname "$0")"
+CFG=".token-config.json"
+
+if [[ ! -f "$CFG" ]]; then
+  echo "Configuração não encontrada."
+  exit 1
+fi
+
+node <<'NODE'
+const c = require("./.token-config.json");
+console.log("");
+console.log("PRÓXIMAS ETAPAS");
+console.log("");
+console.log("Rede selecionada:", c.network.name);
+console.log("Chain ID:", c.network.chainId);
+console.log("Moeda para gas:", c.network.nativeSymbol);
+console.log("");
+console.log("1. Abra a MetaMask e selecione/adiciona a rede indicada.");
+console.log("2. Configure RPC_URL no .env com um endpoint confiável da rede selecionada.");
+console.log("3. Configure PRIVATE_KEY no .env. Prefira uma carteira dedicada, com saldo apenas para implantação.");
+console.log("4. Nunca compartilhe o arquivo .env ou a chave privada.");
+console.log("5. Verifique o saldo e a rede com: ./verificar_carteira.sh");
+console.log("6. Compile: npm run compile");
+console.log("7. Teste: npm test");
+console.log("8. Implante: npm run deploy");
+console.log("");
+console.log("O registro será salvo em deployments/" + c.network.key + "/deployment.json");
+console.log("Explorer:", c.network.explorer);
+console.log("");
+console.log("IMPORTANTE: o instalador atual usa o mesmo contrato Solidity ERC-20 somente em redes EVM.");
+console.log("Solana, TRON, Sui e Aptos aparecem no catálogo, mas permanecem desabilitadas e exigem módulos/contratos próprios.");
+console.log("A implantação não cria pool nem adiciona liquidez automaticamente. Isso deve ser feito separadamente na DEX da rede.");
+NODE
+EOF
+chmod +x readme.sh
+./readme.sh
