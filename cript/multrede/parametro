@@ -1,0 +1,220 @@
+{
+  "schemaVersion": 1,
+  "description": "Catálogo de redes para o instalador unic_cripton. Apenas redes EVM podem usar o módulo evm.",
+  "defaultModule": "evm",
+  "networks": [
+    {
+      "key": "polygon",
+      "name": "Polygon PoS",
+      "family": "evm",
+      "module": "evm",
+      "chainId": 137,
+      "nativeCurrency": {
+        "name": "POL",
+        "symbol": "POL",
+        "decimals": 18
+      },
+      "rpc": {
+        "default": "https://polygon-bor-rpc.publicnode.com",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://polygonscan.com",
+      "enabled": true,
+      "deploySupported": true
+    },
+    {
+      "key": "ethereum",
+      "name": "Ethereum Mainnet",
+      "family": "evm",
+      "module": "evm",
+      "chainId": 1,
+      "nativeCurrency": {
+        "name": "Ether",
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "rpc": {
+        "default": "https://ethereum-rpc.publicnode.com",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://etherscan.io",
+      "enabled": true,
+      "deploySupported": true
+    },
+    {
+      "key": "bnb",
+      "name": "BNB Smart Chain",
+      "family": "evm",
+      "module": "evm",
+      "chainId": 56,
+      "nativeCurrency": {
+        "name": "BNB",
+        "symbol": "BNB",
+        "decimals": 18
+      },
+      "rpc": {
+        "default": "https://bsc-rpc.publicnode.com",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://bscscan.com",
+      "enabled": true,
+      "deploySupported": true
+    },
+    {
+      "key": "arbitrum",
+      "name": "Arbitrum One",
+      "family": "evm",
+      "module": "evm",
+      "chainId": 42161,
+      "nativeCurrency": {
+        "name": "Ether",
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "rpc": {
+        "default": "https://arbitrum-one-rpc.publicnode.com",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://arbiscan.io",
+      "enabled": true,
+      "deploySupported": true
+    },
+    {
+      "key": "optimism",
+      "name": "OP Mainnet",
+      "family": "evm",
+      "module": "evm",
+      "chainId": 10,
+      "nativeCurrency": {
+        "name": "Ether",
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "rpc": {
+        "default": "https://optimism-rpc.publicnode.com",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://optimistic.etherscan.io",
+      "enabled": true,
+      "deploySupported": true
+    },
+    {
+      "key": "base",
+      "name": "Base",
+      "family": "evm",
+      "module": "evm",
+      "chainId": 8453,
+      "nativeCurrency": {
+        "name": "Ether",
+        "symbol": "ETH",
+        "decimals": 18
+      },
+      "rpc": {
+        "default": "https://base-rpc.publicnode.com",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://basescan.org",
+      "enabled": true,
+      "deploySupported": true
+    },
+    {
+      "key": "avalanche",
+      "name": "Avalanche C-Chain",
+      "family": "evm",
+      "module": "evm",
+      "chainId": 43114,
+      "nativeCurrency": {
+        "name": "Avalanche",
+        "symbol": "AVAX",
+        "decimals": 18
+      },
+      "rpc": {
+        "default": "https://avalanche-c-chain-rpc.publicnode.com",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://snowtrace.io",
+      "enabled": true,
+      "deploySupported": true
+    },
+    {
+      "key": "solana",
+      "name": "Solana",
+      "family": "non-evm",
+      "module": "solana",
+      "chainId": null,
+      "nativeCurrency": {
+        "name": "Solana",
+        "symbol": "SOL",
+        "decimals": 9
+      },
+      "rpc": {
+        "default": "",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://explorer.solana.com",
+      "enabled": false,
+      "deploySupported": false,
+      "reason": "Exige módulo próprio; contrato Solidity/ERC-20 não é compatível."
+    },
+    {
+      "key": "tron",
+      "name": "TRON",
+      "family": "non-evm",
+      "module": "tron",
+      "chainId": null,
+      "nativeCurrency": {
+        "name": "TRX",
+        "symbol": "TRX",
+        "decimals": 6
+      },
+      "rpc": {
+        "default": "",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://tronscan.org",
+      "enabled": false,
+      "deploySupported": false,
+      "reason": "Exige módulo próprio e contrato TRC-20."
+    },
+    {
+      "key": "sui",
+      "name": "Sui",
+      "family": "non-evm",
+      "module": "sui",
+      "chainId": null,
+      "nativeCurrency": {
+        "name": "SUI",
+        "symbol": "SUI",
+        "decimals": 9
+      },
+      "rpc": {
+        "default": "",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://suiscan.xyz",
+      "enabled": false,
+      "deploySupported": false,
+      "reason": "Exige módulo próprio e Move."
+    },
+    {
+      "key": "aptos",
+      "name": "Aptos",
+      "family": "non-evm",
+      "module": "aptos",
+      "chainId": null,
+      "nativeCurrency": {
+        "name": "APT",
+        "symbol": "APT",
+        "decimals": 8
+      },
+      "rpc": {
+        "default": "",
+        "env": "RPC_URL"
+      },
+      "explorer": "https://explorer.aptoslabs.com",
+      "enabled": false,
+      "deploySupported": false,
+      "reason": "Exige módulo próprio e Move."
+    }
+  ]
+}
