@@ -30,7 +30,7 @@ echo "NPM: $(npm -v)"
 # ---------------- Catálogo de redes ----------------
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PARAM_FILE="${SCRIPT_DIR}/parametro"
-PARAM_URL="https://raw.githubusercontent.com/wscouto2501/serverlocal/main/cript/parametro"
+PARAM_URL="https://raw.githubusercontent.com/wscouto2501/serverlocal/main/cript/multrede/parametro"
 
 if [[ ! -s "$PARAM_FILE" ]]; then
   echo "Arquivo parametro não encontrado ao lado do instalador. Baixando do GitHub..."
