@@ -117,7 +117,7 @@ read -r -p "Permitir novas emissões pelo administrador? (s/N): " MINT_ANSWER
 MINT_ANSWER="${MINT_ANSWER:-N}"
 
 read -r -p "Permitir que qualquer titular queime seus próprios tokens? (S/n): " BURN_ANSWER
-BURN_ANSWER="${BURN_ANSWER:-S}"
+BURN_ANSWER="${BURN_ANSWER:-N}"
 
 read -r -p "Descrição do projeto (opcional): " TOKEN_DESCRIPTION
 
