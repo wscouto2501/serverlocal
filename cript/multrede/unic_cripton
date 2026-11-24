@@ -116,7 +116,7 @@ read -r -p "Carteira que receberá a emissão inicial (vazio = carteira implanta
 read -r -p "Permitir novas emissões pelo administrador? (s/N): " MINT_ANSWER
 MINT_ANSWER="${MINT_ANSWER:-N}"
 
-read -r -p "Permitir que qualquer titular queime seus próprios tokens? (S/n): " BURN_ANSWER
+read -r -p "Permitir que qualquer titular queime seus próprios tokens? (s/N): " BURN_ANSWER
 BURN_ANSWER="${BURN_ANSWER:-N}"
 
 read -r -p "Descrição do projeto (opcional): " TOKEN_DESCRIPTION
@@ -170,8 +170,8 @@ if [[ ! "$TOKEN_SYMBOL" =~ ^[A-Za-z0-9]{1,12}$ ]]; then
   exit 1
 fi
 
-if [[ ! "$INITIAL_SUPPLY" =~ ^[0-9]+([.][0-9]+)?$ ]] || [[ "$INITIAL_SUPPLY" == "0" ]]; then
-  echo "ERRO: quantidade inicial inválida."
+if [[ ! "$INITIAL_SUPPLY" =~ ^[0-9]+$ ]] || [[ ! "$INITIAL_SUPPLY" =~ [1-9] ]]; then
+  echo "ERRO: O fornecimento inicial deve ser um número inteiro maior que zero."
   exit 1
 fi
 
