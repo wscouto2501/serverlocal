@@ -1310,7 +1310,7 @@ console.log("Burn:", c.burnEnabled ? "Habilitado" : "Desabilitado");
 console.log("");
 console.log("PRÓXIMAS ETAPAS");
 console.log("");
-console.log("1. Configure RPC_URL no arquivo .env.");
+console.log("1. Configure RPC_URL (https://www.alchemy.com/) no arquivo .env.");
 console.log("2. Configure PRIVATE_KEY no arquivo .env.");
 console.log("3. Utilize uma carteira dedicada para implantação.");
 console.log("4. Nunca compartilhe a chave privada ou o arquivo .env.");
