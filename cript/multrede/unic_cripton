@@ -190,7 +190,7 @@ MINT_ENABLED=false
 [[ "$MINT_ANSWER" =~ ^[Ss]$ ]] && MINT_ENABLED=true
 
 BURN_ENABLED=false
-[[ ! "$BURN_ANSWER" =~ ^[Nn]$ ]] && BURN_ENABLED=true
+[[ ! "$BURN_ANSWER" =~ ^[Ss]$ ]] && BURN_ENABLED=true
 
 # Grava configuração JSON com escape seguro feito pelo Node.
 TOKEN_NAME="$TOKEN_NAME" \
@@ -492,7 +492,7 @@ describe("MeuToken personalizavel", function () {
       options.decimals ?? 18,
       options.holder || owner.address,
       options.mintEnabled ?? false,
-      options.burnEnabled ?? true,
+      options.burnEnabled ?? false,
       ethers.hexlify(ethers.randomBytes(32)),  // tokenId
       ethers.hexlify(ethers.randomBytes(32))   // uniqueFingerprint (NOVO)
     );
@@ -617,158 +617,336 @@ chmod +x verificar_carteira.sh
 
 
 cat > validar_moeda.sh <<'PUBLICAR_EOF'
-#!/bin/bash
+#!/usr/bin/env bash
 set -Eeuo pipefail
 
 # ============================================================
 # VALIDADOR AUXILIAR DE TOKEN EVM
-# Verifica RPC, carteira e existência de um contrato em uma rede EVM.
+#
+# FUNÇÃO:
+#   Consultar informações públicas de um contrato ERC-20.
+#
+# SEGURANÇA:
+#   - Não solicita chave privada.
+#   - Não acessa credenciais da carteira.
+#   - Não cria nem modifica .env.
+#   - Não executa transações.
+#   - Não movimenta tokens.
+#   - Não altera contratos.
+#   - Utiliza somente consultas RPC.
 # ============================================================
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Execute como root: sudo bash validar_moeda.sh"
-  exit 1
+    echo "Execute como root: sudo bash validar_moeda.sh"
+    exit 1
 fi
 
-# ---------------- Variáveis de ambiente / diretórios ----------------
+# ---------------- Diretórios ----------------
+
 PROJECT_DIR="__PROJECT_DIR__"
 BUILD_DIR="${PROJECT_DIR}/build"
 LOG_DIR="${PROJECT_DIR}/logs"
+
 mkdir -p "${BUILD_DIR}" "${LOG_DIR}"
 
-# ---------------- Node.js 20+ ----------------
-if ! command -v node >/dev/null 2>&1 || \
-   ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
-  echo "Instalando Node.js 20..."
-  apt-get update
-  apt-get install -y ca-certificates curl
-  curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
-  bash /tmp/nodesource_setup.sh
-  apt-get install -y nodejs
+LOG_FILE="${LOG_DIR}/validar_moeda.log"
+
+# ---------------- Dependências ----------------
+
+if ! command -v node >/dev/null 2>&1; then
+    echo "[ERRO] Node.js não encontrado."
+    echo "Instale Node.js 20 ou superior."
+    exit 1
+fi
+
+if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
+    echo "[ERRO] É necessário Node.js 20 ou superior."
+    exit 1
 fi
 
 echo "Node.js: $(node -v)"
-echo "NPM:     $(npm -v)"
 
-# ---------------- Dependências do projeto ----------------
+# ---------------- Projeto ----------------
+
 cd "${PROJECT_DIR}"
 
 if [[ ! -f package.json ]]; then
-  echo "Inicializando projeto Node..."
-  npm init -y >/dev/null
+    echo "[ERRO] package.json não encontrado."
+    echo "O projeto precisa estar inicializado."
+    exit 1
 fi
 
-echo "Instalando dependências (ethers, dotenv)..."
-npm install --no-audit --no-fund ethers dotenv 2>&1 | tee -a "${LOG_DIR}/publicar_carteira.log"
+# Verifica se ethers já está instalado.
+if ! node -e 'require.resolve("ethers")' >/dev/null 2>&1; then
+    echo "[ERRO] Dependência ethers não encontrada."
+    echo "Instale-a no projeto antes de executar o validador."
+    exit 1
+fi
 
-# ---------------- Coleta de dados do usuário ----------------
+# ---------------- Coleta de dados ----------------
+
 echo ""
 echo "============================================================"
-echo "  VALIDAÇÃO DE TOKEN - REDE EVM"
+echo "           VALIDADOR DE TOKEN - REDE EVM"
 echo "============================================================"
+echo ""
+echo "Este procedimento utiliza somente consultas públicas."
+echo "Nenhuma chave privada será solicitada."
+echo "Nenhuma transação será executada."
+echo ""
 
-read -rp "RPC da rede EVM que deseja consultar: " RPC_URL
-read -rsp "Chave privada da carteira publicadora (0x...): " PRIVATE_KEY
-read -rp "Endereço do contrato do token (0x...): " TOKEN_ADDRESS
+read -r -p "RPC da rede EVM: " RPC_URL
+read -r -p "Endereço do contrato do token: " TOKEN_ADDRESS
 
-if [[ -z "${RPC_URL}" || -z "${PRIVATE_KEY}" || -z "${TOKEN_ADDRESS}" ]]; then
-  echo "ERRO: todos os campos são obrigatórios."
-  exit 1
+if [[ -z "${RPC_URL}" || -z "${TOKEN_ADDRESS}" ]]; then
+    echo "[ERRO] RPC e endereço do contrato são obrigatórios."
+    exit 1
 fi
 
-# ---------------- Geração do script de publicação ----------------
-cat > "${PROJECT_DIR}/publicar.js" <<'EOF'
-require("dotenv").config();
+if [[ ! "${RPC_URL}" =~ ^https?:// ]]; then
+    echo "[ERRO] URL RPC inválida."
+    exit 1
+fi
+
+if [[ ! "${TOKEN_ADDRESS}" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+    echo "[ERRO] Endereço do contrato inválido."
+    exit 1
+fi
+
+# ---------------- Geração do validador ----------------
+
+cat > "${PROJECT_DIR}/validar_moeda.js" <<'JS_EOF'
 const { ethers } = require("ethers");
+const fs = require("fs");
 
 async function main() {
-  const rpcUrl        = process.env.RPC_URL;
-  const privateKey    = process.env.PRIVATE_KEY;
-  const tokenAddress  = process.env.TOKEN_ADDRESS;
 
-  if (!rpcUrl || !privateKey || !tokenAddress) {
-    throw new Error("RPC_URL, PRIVATE_KEY e TOKEN_ADDRESS são obrigatórios.");
-  }
+    const rpcUrl = process.env.RPC_URL;
+    const tokenAddress = process.env.TOKEN_ADDRESS;
 
-  console.log("Conectando à rede...");
-  const provider = new ethers.JsonRpcProvider(rpcUrl);
+    if (!rpcUrl || !tokenAddress) {
+        throw new Error("RPC_URL e TOKEN_ADDRESS são obrigatórios.");
+    }
 
-  const network = await provider.getNetwork();
-  console.log(`Rede detectada: ${network.name} (chainId ${network.chainId})`);
+    if (!ethers.isAddress(tokenAddress)) {
+        throw new Error("Endereço de contrato inválido.");
+    }
 
-  const wallet = new ethers.Wallet(privateKey, provider);
-  console.log(`Carteira publicadora: ${wallet.address}`);
+    const address = ethers.getAddress(tokenAddress);
 
-  const balance = await provider.getBalance(wallet.address);
-  console.log(`Saldo da moeda nativa: ${ethers.formatEther(balance)}`);
+    console.log("\n============================================");
+    console.log("        AUDITORIA BÁSICA DO TOKEN");
+    console.log("============================================\n");
 
-  if (balance === 0n) {
-    throw new Error("Saldo insuficiente para pagar o gas da rede.");
-  }
+    const provider = new ethers.JsonRpcProvider(rpcUrl);
 
-  // Verifica se o contrato existe na rede
-  const code = await provider.getCode(tokenAddress);
-  if (code === "0x") {
-    throw new Error(`Nenhum contrato encontrado em ${tokenAddress}`);
-  }
-  console.log("Contrato encontrado. Lendo metadados...");
+    // Verifica conexão
+    const network = await provider.getNetwork();
 
-  // ABI mínima ERC-20
-  const abi = [
-    "function name() view returns (string)",
-    "function symbol() view returns (string)",
-    "function decimals() view returns (uint8)",
-    "function totalSupply() view returns (uint256)",
-    "function balanceOf(address) view returns (uint256)",
-    "function transfer(address,uint256) returns (bool)"
-  ];
+    console.log("[OK] Conexão com a blockchain.");
+    console.log(`Chain ID: ${network.chainId}`);
 
-  const token = new ethers.Contract(tokenAddress, abi, wallet);
+    // Verifica bloco atual
+    const blockNumber = await provider.getBlockNumber();
 
-  try {
-    const [name, symbol, decimals, totalSupply] = await Promise.all([
-      token.name(), token.symbol(), token.decimals(), token.totalSupply()
-    ]);
-    console.log("--------------------------------------------");
-    console.log(`Nome:           ${name}`);
-    console.log(`Símbolo:        ${symbol}`);
-    console.log(`Decimais:       ${decimals}`);
-    console.log(`Supply total:   ${ethers.formatUnits(totalSupply, decimals)} ${symbol}`);
-    console.log("--------------------------------------------");
-  } catch (e) {
-    console.warn("Não foi possível ler todos os metadados ERC-20:", e.message);
-  }
+    console.log(`Bloco atual: ${blockNumber}`);
 
-  console.log("✅ Publicação da carteira/token validada com sucesso.");
+    // Verifica existência do contrato
+    const code = await provider.getCode(address);
+
+    if (code === "0x") {
+        throw new Error("Nenhum contrato encontrado neste endereço.");
+    }
+
+    console.log("\n[OK] Contrato encontrado.");
+    console.log(`Endereço: ${address}`);
+    console.log(`Bytecode: ${((code.length - 2) / 2)} bytes`);
+
+    // ABI exclusivamente de leitura
+    const abi = [
+        "function name() view returns (string)",
+        "function symbol() view returns (string)",
+        "function decimals() view returns (uint8)",
+        "function totalSupply() view returns (uint256)",
+        "function owner() view returns (address)",
+        "function mintEnabled() view returns (bool)",
+        "function burnEnabled() view returns (bool)"
+    ];
+
+    const token = new ethers.Contract(address, abi, provider);
+
+    const result = {
+        chainId: network.chainId.toString(),
+        blockNumber,
+        address,
+        bytecodeBytes: (code.length - 2) / 2,
+        name: null,
+        symbol: null,
+        decimals: null,
+        totalSupply: null,
+        owner: null,
+        mintEnabled: null,
+        burnEnabled: null,
+        checks: {}
+    };
+
+    // Metadados ERC-20
+    console.log("\n============================================");
+    console.log("             DADOS DO TOKEN");
+    console.log("============================================");
+
+    try {
+        result.name = await token.name();
+        result.checks.name = true;
+        console.log(`Nome: ${result.name}`);
+    } catch {
+        console.log("[AVISO] Nome não disponível.");
+        result.checks.name = false;
+    }
+
+    try {
+        result.symbol = await token.symbol();
+        result.checks.symbol = true;
+        console.log(`Símbolo: ${result.symbol}`);
+    } catch {
+        console.log("[AVISO] Símbolo não disponível.");
+        result.checks.symbol = false;
+    }
+
+    try {
+        result.decimals = Number(await token.decimals());
+        result.checks.decimals = true;
+        console.log(`Decimais: ${result.decimals}`);
+    } catch {
+        console.log("[AVISO] Decimais não disponíveis.");
+        result.checks.decimals = false;
+    }
+
+    try {
+        const supply = await token.totalSupply();
+
+        result.totalSupply = supply.toString();
+        result.checks.totalSupply = true;
+
+        const formatted = result.decimals !== null
+            ? ethers.formatUnits(supply, result.decimals)
+            : supply.toString();
+
+        console.log(`Supply: ${formatted} ${result.symbol || ""}`);
+
+    } catch {
+        console.log("[AVISO] Supply não disponível.");
+        result.checks.totalSupply = false;
+    }
+
+    // Proprietário
+    console.log("\n============================================");
+    console.log("              ADMINISTRAÇÃO");
+    console.log("============================================");
+
+    try {
+        result.owner = await token.owner();
+        result.checks.owner = true;
+        console.log(`Proprietário: ${result.owner}`);
+    } catch {
+        console.log("Contrato não disponibiliza owner().");
+        result.checks.owner = false;
+    }
+
+    // Configurações opcionais do contrato
+    try {
+        result.mintEnabled = await token.mintEnabled();
+        result.checks.mintEnabled = true;
+
+        console.log(
+            `Mint: ${result.mintEnabled ? "ATIVADO" : "DESATIVADO"}`
+        );
+    } catch {
+        console.log("Mint: configuração não consultável.");
+        result.checks.mintEnabled = false;
+    }
+
+    try {
+        result.burnEnabled = await token.burnEnabled();
+        result.checks.burnEnabled = true;
+
+        console.log(
+            `Burn: ${result.burnEnabled ? "ATIVADO" : "DESATIVADO"}`
+        );
+    } catch {
+        console.log("Burn: configuração não consultável.");
+        result.checks.burnEnabled = false;
+    }
+
+    // Relatório
+    const reportPath = process.env.REPORT_FILE;
+
+    if (reportPath) {
+        fs.writeFileSync(
+            reportPath,
+            JSON.stringify(result, null, 2),
+            { mode: 0o600 }
+        );
+    }
+
+    console.log("\n============================================");
+    console.log("             RESULTADO");
+    console.log("============================================");
+
+    console.log("[OK] Consulta concluída.");
+    console.log("[OK] Nenhuma transação executada.");
+    console.log("[OK] Nenhuma chave privada utilizada.");
+    console.log("[OK] Nenhum arquivo .env modificado.");
+
+    if (result.mintEnabled === true) {
+        console.log("[ALERTA] Mint está habilitado.");
+    }
+
+    if (result.burnEnabled === true) {
+        console.log("[ALERTA] Burn está habilitado.");
+    }
+
+    console.log("\nATENÇÃO:");
+    console.log("Esta verificação não substitui uma auditoria");
+    console.log("de segurança do código ou do bytecode.");
+
 }
 
 main().catch((err) => {
-  console.error("❌ Falha na publicação:", err.message);
-  process.exit(1);
+    console.error("\n[ERRO]", err.message);
+    process.exit(1);
 });
-EOF
-
-# ---------------- Arquivo .env ----------------
-cat > "${PROJECT_DIR}/.env" <<EOF
-PROJECT_DIR="__PROJECT_DIR__"
-RPC_URL=${RPC_URL}
-PRIVATE_KEY=${PRIVATE_KEY}
-TOKEN_ADDRESS=${TOKEN_ADDRESS}
-EOF
-chmod 600 "${PROJECT_DIR}/.env"
+JS_EOF
 
 # ---------------- Execução ----------------
-echo ""
-echo "Executando publicação..."
-node "${PROJECT_DIR}/publicar.js" 2>&1 | tee -a "${LOG_DIR}/publicar_carteira.log"
 
 echo ""
-echo "✅ Processo concluído. Log em: ${LOG_DIR}/publicar_carteira.log"
+echo "Executando validação somente de leitura..."
+
+RPC_URL="${RPC_URL}" \
+TOKEN_ADDRESS="${TOKEN_ADDRESS}" \
+REPORT_FILE="${BUILD_DIR}/relatorio_validacao.json" \
+node "${PROJECT_DIR}/validar_moeda.js" 2>&1 | tee -a "${LOG_FILE}"
+
+echo ""
+echo "============================================================"
+echo " VALIDAÇÃO CONCLUÍDA"
+echo "============================================================"
+echo "Log: ${LOG_FILE}"
+echo "Relatório: ${BUILD_DIR}/relatorio_validacao.json"
+echo ""
+echo "Nenhuma chave privada foi solicitada."
+echo "Nenhuma transação foi executada."
+echo "============================================================"
+
 PUBLICAR_EOF
 
 # Substitui o placeholder pelo caminho real do projeto
 sed -i "s|__PROJECT_DIR__|${PROJECT_DIR}|g" validar_moeda.sh
+
 chmod +x validar_moeda.sh
+
+
 
 
 echo
