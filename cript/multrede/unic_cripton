@@ -190,7 +190,7 @@ MINT_ENABLED=false
 [[ "$MINT_ANSWER" =~ ^[Ss]$ ]] && MINT_ENABLED=true
 
 BURN_ENABLED=false
-[[ ! "$BURN_ANSWER" =~ ^[Ss]$ ]] && BURN_ENABLED=true
+[[ "$BURN_ANSWER" =~ ^[Ss]$ ]] && BURN_ENABLED=true
 
 # Grava configuração JSON com escape seguro feito pelo Node.
 TOKEN_NAME="$TOKEN_NAME" \
