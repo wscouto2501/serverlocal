@@ -274,7 +274,20 @@ cat > package.json <<'EOF'
 }
 EOF
 
+
+
+
+
+
+
+
+
+
+
+
+
 # ---------------- Contrato ERC20 personalizável ----------------
+
 cat > contracts/MeuToken.sol <<'EOF'
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
@@ -284,13 +297,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract MeuToken is ERC20, Ownable {
     uint8 private immutable _customDecimals;
-    bool public immutable mintEnabled;
-    bool public immutable burnEnabled;
-    bytes32 public immutable tokenId;
 
-    // Identificador exclusivo incorporado ao bytecode de runtime.
-    // Gerado aleatoriamente no deploy.js, garantindo que cada
-    // implantação produza um bytecode diferente (sem "Exact Match").
+    bytes32 public immutable tokenId;
     bytes32 public immutable uniqueFingerprint;
 
     constructor(
@@ -299,20 +307,15 @@ contract MeuToken is ERC20, Ownable {
         uint256 initialSupply,
         uint8 tokenDecimals,
         address initialHolder,
-        bool enableMint,
-        bool enableBurn,
         bytes32 uniqueTokenId,
         bytes32 _uniqueFingerprint
     ) ERC20(tokenName, tokenSymbol) Ownable(msg.sender) {
         require(initialHolder != address(0), "Invalid initial holder");
         require(tokenDecimals <= 18, "Decimals above 18");
-
         require(uniqueTokenId != bytes32(0), "Invalid token ID");
         require(_uniqueFingerprint != bytes32(0), "Invalid fingerprint");
 
         _customDecimals = tokenDecimals;
-        mintEnabled = enableMint;
-        burnEnabled = enableBurn;
         tokenId = uniqueTokenId;
         uniqueFingerprint = _uniqueFingerprint;
 
@@ -323,21 +326,45 @@ contract MeuToken is ERC20, Ownable {
     function decimals() public view override returns (uint8) {
         return _customDecimals;
     }
+EOF
 
-    // Somente o proprietario pode emitir novos tokens, se a opcao foi ativada.
+# Incluir Mint somente quando SIM
+if [[ "$MINT_ENABLED" == "true" ]]; then
+cat >> contracts/MeuToken.sol <<'EOF'
+
     function mint(address to, uint256 amount) external onlyOwner {
-        require(mintEnabled, "Mint disabled");
         require(to != address(0), "Invalid recipient");
         _mint(to, amount);
     }
+EOF
+fi
 
-    // Queima tokens da propria carteira do titular, se ativada.
+# Incluir Burn somente quando SIM
+if [[ "$BURN_ENABLED" == "true" ]]; then
+cat >> contracts/MeuToken.sol <<'EOF'
+
     function burn(uint256 amount) external {
-        require(burnEnabled, "Burn disabled");
         _burn(msg.sender, amount);
     }
-}
 EOF
+fi
+
+# Fechar contrato
+echo "}" >> contracts/MeuToken.sol
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 # ---------------- Hardhat multirrede EVM ----------------
 cat > hardhat.config.js <<'EOF'
@@ -427,10 +454,24 @@ async function main() {
   console.log("Identificador único (fingerprint):", uniqueFingerprint);
 
   const Token = await hre.ethers.getContractFactory("MeuToken");
+
+
+
   const token = await Token.deploy(
     cfg.name, cfg.symbol, cfg.initialSupply, cfg.decimals, initialHolder,
     cfg.mintEnabled, cfg.burnEnabled, uniqueTokenId, uniqueFingerprint
   );
+
+  const token = await Token.deploy(
+    cfg.name,
+    cfg.symbol,
+    cfg.initialSupply,
+    cfg.decimals,
+    initialHolder,
+    uniqueTokenId,
+    uniqueFingerprint
+  );
+
   await token.waitForDeployment();
 
   const address = await token.getAddress();
@@ -475,10 +516,12 @@ main().catch(error => {
 });
 EOF
 
+
 # ---------------- Testes ----------------
 cat > test/MeuToken.js <<'EOF'
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const config = require("../.token-config.json");
 
 describe("MeuToken personalizavel", function () {
   async function deployToken(options = {}) {
@@ -491,10 +534,8 @@ describe("MeuToken personalizavel", function () {
       options.supply || "10000000",
       options.decimals ?? 18,
       options.holder || owner.address,
-      options.mintEnabled ?? false,
-      options.burnEnabled ?? false,
-      ethers.hexlify(ethers.randomBytes(32)),  // tokenId
-      ethers.hexlify(ethers.randomBytes(32))   // uniqueFingerprint (NOVO)
+      ethers.hexlify(ethers.randomBytes(32)), // tokenId
+      ethers.hexlify(ethers.randomBytes(32))  // uniqueFingerprint
     );
 
     await token.waitForDeployment();
@@ -503,49 +544,101 @@ describe("MeuToken personalizavel", function () {
 
   it("armazena um identificador unico nao nulo", async function () {
     const { token } = await deployToken();
+
     expect(await token.tokenId()).to.match(/^0x[0-9a-fA-F]{64}$/);
     expect(await token.tokenId()).to.not.equal(ethers.ZeroHash);
   });
 
   it("armazena um fingerprint unico nao nulo", async function () {
     const { token } = await deployToken();
+
     expect(await token.uniqueFingerprint()).to.match(/^0x[0-9a-fA-F]{64}$/);
     expect(await token.uniqueFingerprint()).to.not.equal(ethers.ZeroHash);
   });
 
   it("emite a quantidade inicial para a carteira escolhida", async function () {
-    const { token, other } = await deployToken({
-      supply: "2500",
-      holder: undefined
+    const { token, owner } = await deployToken({
+      supply: "2500"
     });
-    expect(await token.balanceOf(other.address)).to.equal(0n);
-    expect(await token.totalSupply()).to.equal(ethers.parseUnits("2500", 18));
+
+    expect(await token.balanceOf(owner.address))
+      .to.equal(ethers.parseUnits("2500", 18));
+
+    expect(await token.totalSupply())
+      .to.equal(ethers.parseUnits("2500", 18));
   });
 
   it("usa as casas decimais configuradas", async function () {
     const { token } = await deployToken({ decimals: 6 });
+
     expect(await token.decimals()).to.equal(6);
-    expect(await token.totalSupply()).to.equal(10_000_000n * 10n ** 6n);
+
+    expect(await token.totalSupply())
+      .to.equal(10_000_000n * 10n ** 6n);
   });
 
-  it("permite mint apenas quando habilitado e pelo proprietario", async function () {
-    const { token, other } = await deployToken({ mintEnabled: true });
-    await token.mint(other.address, 100n);
-    expect(await token.balanceOf(other.address)).to.equal(100n);
-  });
+  // ---------------- MINT ----------------
 
-  it("bloqueia mint quando desabilitado", async function () {
-    const { token, other } = await deployToken({ mintEnabled: false });
-    await expect(token.mint(other.address, 100n)).to.be.revertedWith("Mint disabled");
-  });
+  if (config.mintEnabled === true) {
 
-  it("permite queima quando habilitada", async function () {
-    const { token, owner } = await deployToken({ burnEnabled: true });
-    await token.burn(ethers.parseUnits("100", 18));
-    expect(await token.balanceOf(owner.address)).to.equal(ethers.parseUnits("9999900", 18));
-  });
+    it("possui funcao mint quando habilitada", async function () {
+      const { token, owner, other } = await deployToken();
+
+      expect(token.interface.hasFunction("mint")).to.equal(true);
+
+      await token.mint(other.address, 100n);
+
+      expect(await token.balanceOf(other.address)).to.equal(100n);
+    });
+
+    it("permite mint somente pelo proprietario", async function () {
+      const { token, other } = await deployToken();
+
+      await expect(
+        token.connect(other).mint(other.address, 100n)
+      ).to.be.reverted;
+    });
+
+  } else {
+
+    it("nao possui funcao mint quando desabilitada", async function () {
+      const { token } = await deployToken();
+
+      expect(token.interface.hasFunction("mint")).to.equal(false);
+    });
+
+  }
+
+  // ---------------- BURN ----------------
+
+  if (config.burnEnabled === true) {
+
+    it("possui funcao burn quando habilitada", async function () {
+      const { token, owner } = await deployToken();
+
+      expect(token.interface.hasFunction("burn")).to.equal(true);
+
+      const initialBalance = await token.balanceOf(owner.address);
+
+      await token.burn(ethers.parseUnits("100", 18));
+
+      expect(await token.balanceOf(owner.address))
+        .to.equal(initialBalance - ethers.parseUnits("100", 18));
+    });
+
+  } else {
+
+    it("nao possui funcao burn quando desabilitada", async function () {
+      const { token } = await deployToken();
+
+      expect(token.interface.hasFunction("burn")).to.equal(false);
+    });
+
+  }
+
 });
 EOF
+
 
 # ---------------- .env ----------------
 if [[ ! -f .env ]]; then
