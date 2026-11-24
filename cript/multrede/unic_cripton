@@ -1,103 +1,135 @@
+
 #!/bin/bash
 set -Eeuo pipefail
 
 # ============================================================
-# REALUNIT / TOKEN PERSONALIZADO - MULTIRREDE EVM
-# Este instalador solicita os dados do token e da rede antes de compilar.
+# TOKEN PERSONALIZADO - MULTIRREDE EVM
 # ============================================================
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Execute como root: sudo bash instalar_moeda.sh"
-  exit 1
+    echo "Execute como root: sudo bash unic_cripton"
+    exit 1
 fi
 
 # ---------------- Node.js 20+ ----------------
+
 if ! command -v node >/dev/null 2>&1 || \
    ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
-  echo "Instalando Node.js 20..."
-  apt-get update
-  apt-get install -y ca-certificates curl
-  curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
-  bash /tmp/nodesource_setup.sh
-  apt-get install -y nodejs
-  rm -f /tmp/nodesource_setup.sh
+    echo "Instalando Node.js 20..."
+    apt-get update
+    apt-get install -y ca-certificates curl
+    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+    bash /tmp/nodesource_setup.sh
+    apt-get install -y nodejs
+    rm -f /tmp/nodesource_setup.sh
 fi
 
 echo "Node.js: $(node -v)"
 echo "NPM: $(npm -v)"
 
-
 # ---------------- Catálogo de redes ----------------
+
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PARAM_FILE="${SCRIPT_DIR}/parametro"
 PARAM_URL="https://raw.githubusercontent.com/wscouto2501/serverlocal/main/cript/multrede/parametro"
 
 if [[ ! -s "$PARAM_FILE" ]]; then
-  echo "Arquivo parametro não encontrado ao lado do instalador. Baixando do GitHub..."
-  if command -v curl >/dev/null 2>&1; then
+    echo "Arquivo parametro não encontrado. Baixando do GitHub..."
+
     curl -fsSL "$PARAM_URL" -o /tmp/unic_cripton_parametro.json || {
-      echo "ERRO: não foi possível obter o catálogo de redes: $PARAM_URL"
-      exit 1
+        echo "ERRO: não foi possível obter o catálogo de redes."
+        exit 1
     }
+
     PARAM_FILE="/tmp/unic_cripton_parametro.json"
-  else
-    echo "ERRO: instale curl ou coloque o arquivo parametro ao lado de unic_cripton."
-    exit 1
-  fi
 fi
 
 node -e '
 const fs = require("fs");
 const p = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
-if (!Array.isArray(p.networks) || !p.networks.length) throw new Error("Catálogo sem redes.");
+if (!Array.isArray(p.networks) || !p.networks.length) {
+    throw new Error("Catálogo sem redes.");
+}
 ' "$PARAM_FILE" || {
-  echo "ERRO: arquivo parametro inválido."
-  exit 1
+    echo "ERRO: arquivo parametro inválido."
+    exit 1
 }
 
-mapfile -t AVAILABLE_NETWORKS < <(node - "$PARAM_FILE" <<'NODE'
+mapfile -t AVAILABLE_NETWORKS < <(
+    node - "$PARAM_FILE" <<'NODE'
 const fs = require("fs");
 const p = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+
 for (const n of p.networks) {
-  if (n.enabled === true && n.deploySupported === true && n.family === "evm" && n.module === "evm") {
-    console.log([n.key, n.name, n.chainId, n.nativeCurrency.symbol, n.rpc.default, n.explorer].join("|"));
-  }
+    if (
+        n.enabled === true &&
+        n.deploySupported === true &&
+        n.family === "evm" &&
+        n.module === "evm"
+    ) {
+        console.log([
+            n.key,
+            n.name,
+            n.chainId,
+            n.nativeCurrency.symbol,
+            n.rpc.default,
+            n.explorer
+        ].join("|"));
+    }
 }
 NODE
 )
 
 if [[ "${#AVAILABLE_NETWORKS[@]}" -eq 0 ]]; then
-  echo "ERRO: o catálogo não possui redes EVM habilitadas para implantação."
-  exit 1
+    echo "ERRO: nenhuma rede EVM habilitada para implantação."
+    exit 1
 fi
 
 echo
 echo "=================================================="
 echo "          SELECIONE A REDE BLOCKCHAIN"
 echo "=================================================="
+
 for i in "${!AVAILABLE_NETWORKS[@]}"; do
-  IFS='|' read -r _key _name _chain _native _rpc _explorer <<< "${AVAILABLE_NETWORKS[$i]}"
-  printf "%2d) %s (Chain ID: %s | moeda de gas: %s)\n" "$((i+1))" "$_name" "$_chain" "$_native"
+    IFS='|' read -r _key _name _chain _native _rpc _explorer \
+        <<< "${AVAILABLE_NETWORKS[$i]}"
+
+    printf "%2d) %s (Chain ID: %s | Gas: %s)\n" \
+        "$((i+1))" "$_name" "$_chain" "$_native"
 done
+
 echo
 read -r -p "Número da rede [1]: " NETWORK_CHOICE
 NETWORK_CHOICE="${NETWORK_CHOICE:-1}"
-if [[ ! "$NETWORK_CHOICE" =~ ^[0-9]+$ ]] || (( NETWORK_CHOICE < 1 || NETWORK_CHOICE > ${#AVAILABLE_NETWORKS[@]} )); then
-  echo "ERRO: opção de rede inválida."
-  exit 1
+
+if [[ ! "$NETWORK_CHOICE" =~ ^[0-9]+$ ]] ||
+   (( NETWORK_CHOICE < 1 || NETWORK_CHOICE > ${#AVAILABLE_NETWORKS[@]} )); then
+    echo "ERRO: opção de rede inválida."
+    exit 1
 fi
 
-IFS='|' read -r NETWORK_KEY NETWORK_NAME NETWORK_CHAIN_ID NATIVE_SYMBOL NETWORK_DEFAULT_RPC NETWORK_EXPLORER <<< "${AVAILABLE_NETWORKS[$((NETWORK_CHOICE-1))]}"
+IFS='|' read -r \
+    NETWORK_KEY \
+    NETWORK_NAME \
+    NETWORK_CHAIN_ID \
+    NATIVE_SYMBOL \
+    NETWORK_DEFAULT_RPC \
+    NETWORK_EXPLORER \
+    <<< "${AVAILABLE_NETWORKS[$((NETWORK_CHOICE-1))]}"
+
+if [[ ! "$NETWORK_CHAIN_ID" =~ ^[0-9]+$ ]] || (( NETWORK_CHAIN_ID == 0 )); then
+    echo "ERRO: Chain ID inválido no catálogo."
+    exit 1
+fi
+
 echo "Rede selecionada: ${NETWORK_NAME} (Chain ID ${NETWORK_CHAIN_ID})"
+
+# ---------------- Dados do token ----------------
 
 echo
 echo "=================================================="
 echo "       CONFIGURAÇÃO DA SUA CRIPTOMOEDA"
 echo "=================================================="
-echo "Preencha os dados. A implantação só ocorrerá"
-echo "posteriormente, quando você executar o comando."
-echo
-
 
 read -r -p "Nome da moeda [RealUnit]: " TOKEN_NAME
 TOKEN_NAME="${TOKEN_NAME:-RealUnit}"
@@ -116,20 +148,89 @@ read -r -p "Carteira que receberá a emissão inicial (vazio = carteira implanta
 read -r -p "Permitir novas emissões pelo administrador? (s/N): " MINT_ANSWER
 MINT_ANSWER="${MINT_ANSWER:-N}"
 
-read -r -p "Permitir que qualquer titular queime seus próprios tokens? (s/N): " BURN_ANSWER
+read -r -p "Permitir que titulares queimem seus próprios tokens? (s/N): " BURN_ANSWER
 BURN_ANSWER="${BURN_ANSWER:-N}"
 
 read -r -p "Descrição do projeto (opcional): " TOKEN_DESCRIPTION
 
-# ==================================================
-# CRIAR DIRETÓRIO COM O NOME DA CRIPTOMOEDA
-# ==================================================
+# ---------------- Validações ----------------
 
-# Converter nome para minúsculas e remover caracteres especiais
-TOKEN_DIR=$(echo "$TOKEN_NAME" \
-    | iconv -f UTF-8 -t ASCII//TRANSLIT \
-    | tr '[:upper:]' '[:lower:]' \
-    | sed 's/[^a-z0-9]/-/g; s/-\+/-/g; s/^-//; s/-$//')
+if [[ ! "$TOKEN_NAME" =~ ^[[:print:]]{1,64}$ ]]; then
+    echo "ERRO: nome inválido ou maior que 64 caracteres."
+    exit 1
+fi
+
+if [[ ! "$TOKEN_SYMBOL" =~ ^[A-Za-z0-9]{1,12}$ ]]; then
+    echo "ERRO: símbolo deve conter de 1 a 12 letras ou números."
+    exit 1
+fi
+
+if [[ ! "$INITIAL_SUPPLY" =~ ^[0-9]+$ ]] ||
+   [[ ! "$INITIAL_SUPPLY" =~ [1-9] ]]; then
+    echo "ERRO: fornecimento inicial deve ser um inteiro maior que zero."
+    exit 1
+fi
+
+if [[ ! "$TOKEN_DECIMALS" =~ ^([0-9]|1[0-8])$ ]]; then
+    echo "ERRO: casas decimais deve ser um número entre 0 e 18."
+    exit 1
+fi
+
+if [[ -n "$INITIAL_HOLDER" ]] &&
+   [[ ! "$INITIAL_HOLDER" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
+    echo "ERRO: endereço da carteira inválido."
+    exit 1
+fi
+
+# Confere o limite de uint256 antes de criar o projeto.
+node - "$INITIAL_SUPPLY" "$TOKEN_DECIMALS" <<'NODE'
+const supply = BigInt(process.argv[2]);
+const decimals = BigInt(process.argv[3]);
+const max = (1n << 256n) - 1n;
+const multiplier = 10n ** decimals;
+
+if (supply > max) {
+    console.error("ERRO: quantidade inicial ultrapassa o limite de uint256.");
+    process.exit(1);
+}
+
+if (supply > max / multiplier) {
+    console.error("ERRO: quantidade inicial multiplicada pelas casas decimais ultrapassa uint256.");
+    process.exit(1);
+}
+NODE
+
+# ---------------- Interpretação Mint/Burn ----------------
+
+parse_yes_no() {
+    local answer
+    answer="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+
+    case "$answer" in
+        s|sim)
+            echo "true"
+            ;;
+        n|nao|não|"")
+            echo "false"
+            ;;
+        *)
+            echo "ERRO: resposta inválida. Utilize S ou N." >&2
+            return 1
+            ;;
+    esac
+}
+
+MINT_ENABLED="$(parse_yes_no "$MINT_ANSWER")" || exit 1
+BURN_ENABLED="$(parse_yes_no "$BURN_ANSWER")" || exit 1
+
+# ---------------- Criar diretório ----------------
+
+TOKEN_DIR="$(
+    printf '%s' "$TOKEN_NAME" |
+    iconv -f UTF-8 -t ASCII//TRANSLIT |
+    tr '[:upper:]' '[:lower:]' |
+    sed 's/[^a-z0-9]/-/g; s/-\+/-/g; s/^-//; s/-$//'
+)"
 
 if [[ -z "$TOKEN_DIR" ]]; then
     echo "ERRO: nome inválido para criar o diretório."
@@ -138,8 +239,8 @@ fi
 
 PROJECT_DIR="/root/$TOKEN_DIR"
 
-if [[ -d "$PROJECT_DIR" ]]; then
-    echo "ERRO: o diretório $PROJECT_DIR já existe."
+if [[ -e "$PROJECT_DIR" ]]; then
+    echo "ERRO: o caminho $PROJECT_DIR já existe."
     exit 1
 fi
 
@@ -152,47 +253,13 @@ echo
 echo "=========================================="
 echo "PROJETO CRIADO"
 echo "=========================================="
-echo "Nome da moeda: $TOKEN_NAME"
+echo "Nome: $TOKEN_NAME"
 echo "Símbolo: $TOKEN_SYMBOL"
 echo "Diretório: $PROJECT_DIR"
 echo "=========================================="
 
+# ---------------- Configuração JSON ----------------
 
-
-# Validações básicas
-if [[ ! "$TOKEN_NAME" =~ ^[[:print:]]{1,64}$ ]]; then
-  echo "ERRO: nome inválido ou maior que 64 caracteres."
-  exit 1
-fi
-
-if [[ ! "$TOKEN_SYMBOL" =~ ^[A-Za-z0-9]{1,12}$ ]]; then
-  echo "ERRO: símbolo deve conter de 1 a 12 letras/números."
-  exit 1
-fi
-
-if [[ ! "$INITIAL_SUPPLY" =~ ^[0-9]+$ ]] || [[ ! "$INITIAL_SUPPLY" =~ [1-9] ]]; then
-  echo "ERRO: O fornecimento inicial deve ser um número inteiro maior que zero."
-  exit 1
-fi
-
-if [[ ! "$TOKEN_DECIMALS" =~ ^([0-9]|1[0-8])$ ]]; then
-  echo "ERRO: casas decimais deve ser um número entre 0 e 18."
-  exit 1
-fi
-
-if [[ -n "$INITIAL_HOLDER" ]] && \
-   [[ ! "$INITIAL_HOLDER" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
-  echo "ERRO: endereço da carteira inválido."
-  exit 1
-fi
-
-MINT_ENABLED=false
-[[ "$MINT_ANSWER" =~ ^[Ss]$ ]] && MINT_ENABLED=true
-
-BURN_ENABLED=false
-[[ "$BURN_ANSWER" =~ ^[Ss]$ ]] && BURN_ENABLED=true
-
-# Grava configuração JSON com escape seguro feito pelo Node.
 TOKEN_NAME="$TOKEN_NAME" \
 TOKEN_SYMBOL="$TOKEN_SYMBOL" \
 INITIAL_SUPPLY="$INITIAL_SUPPLY" \
@@ -208,55 +275,72 @@ NATIVE_SYMBOL="$NATIVE_SYMBOL" \
 NETWORK_EXPLORER="$NETWORK_EXPLORER" \
 node <<'NODE'
 const fs = require("fs");
+
 const config = {
-  name: process.env.TOKEN_NAME,
-  symbol: process.env.TOKEN_SYMBOL,
-  initialSupply: process.env.INITIAL_SUPPLY,
-  decimals: Number(process.env.TOKEN_DECIMALS),
-  initialHolder: process.env.INITIAL_HOLDER || "",
-  mintEnabled: process.env.MINT_ENABLED === "true",
-  burnEnabled: process.env.BURN_ENABLED === "true",
-  description: process.env.TOKEN_DESCRIPTION || "",
-  network: {
-    key: process.env.NETWORK_KEY,
-    name: process.env.NETWORK_NAME,
-    family: "evm",
-    module: "evm",
-    chainId: Number(process.env.NETWORK_CHAIN_ID),
-    nativeSymbol: process.env.NATIVE_SYMBOL,
-    explorer: process.env.NETWORK_EXPLORER
-  }
+    name: process.env.TOKEN_NAME,
+    symbol: process.env.TOKEN_SYMBOL,
+    initialSupply: process.env.INITIAL_SUPPLY,
+    decimals: Number(process.env.TOKEN_DECIMALS),
+    initialHolder: process.env.INITIAL_HOLDER || "",
+    mintEnabled: process.env.MINT_ENABLED === "true",
+    burnEnabled: process.env.BURN_ENABLED === "true",
+    description: process.env.TOKEN_DESCRIPTION || "",
+    network: {
+        key: process.env.NETWORK_KEY,
+        name: process.env.NETWORK_NAME,
+        family: "evm",
+        module: "evm",
+        chainId: Number(process.env.NETWORK_CHAIN_ID),
+        nativeSymbol: process.env.NATIVE_SYMBOL,
+        explorer: process.env.NETWORK_EXPLORER
+    }
 };
-fs.writeFileSync(".token-config.json", JSON.stringify(config, null, 2) + "\n", { mode: 0o600 });
+
+fs.writeFileSync(
+    ".token-config.json",
+    JSON.stringify(config, null, 2) + "\n",
+    { mode: 0o600 }
+);
 NODE
+
+chmod 600 .token-config.json
+
+# ---------------- Resumo ----------------
 
 echo
 echo "---------------- RESUMO ----------------"
-node -e '
-const c=require("./.token-config.json");
-console.log("Nome:",c.name);
-console.log("Símbolo:",c.symbol);
-console.log("Emissão inicial:",c.initialSupply);
-console.log("Casas decimais:",c.decimals);
-console.log("Carteira inicial:",c.initialHolder || "Carteira que implantar");
-console.log("Novas emissões:",c.mintEnabled ? "Permitidas ao administrador" : "Desativadas");
-console.log("Queima:",c.burnEnabled ? "Ativada" : "Desativada");
-console.log("Descrição:",c.description || "(não informada)");
-'
+
+node <<'NODE'
+const c = require("./.token-config.json");
+
+console.log("Nome:", c.name);
+console.log("Símbolo:", c.symbol);
+console.log("Emissão inicial:", c.initialSupply);
+console.log("Casas decimais:", c.decimals);
+console.log("Carteira inicial:", c.initialHolder || "Carteira implantadora");
+console.log("Novas emissões:", c.mintEnabled ? "Permitidas" : "Desativadas");
+console.log("Queima:", c.burnEnabled ? "Ativada" : "Desativada");
+console.log("Descrição:", c.description || "(não informada)");
+console.log("Rede:", c.network.name);
+NODE
+
 echo "----------------------------------------"
+
 read -r -p "Confirma essa configuração? (s/N): " CONFIRM
+
 if [[ ! "$CONFIRM" =~ ^[Ss]$ ]]; then
-  echo "Configuração cancelada. Execute o instalador novamente para preencher."
-  exit 1
+    echo "Configuração cancelada."
+    exit 1
 fi
 
 # ---------------- package.json ----------------
+
 cat > package.json <<'EOF'
 {
   "name": "token-personalizado-multirede",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
-  "description": "Criador de tokens ERC20 em redes EVM configuradas no catálogo",
+  "description": "Criador de tokens ERC20 em redes EVM",
   "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
@@ -274,19 +358,10 @@ cat > package.json <<'EOF'
 }
 EOF
 
-
-
-
-
-
-
-
-
-
-
-
-
-# ---------------- Contrato ERC20 personalizável ----------------
+# ============================================================
+# CONTRATO ERC20
+# Mint e Burn são incluídos somente quando habilitados.
+# ============================================================
 
 cat > contracts/MeuToken.sol <<'EOF'
 // SPDX-License-Identifier: MIT
@@ -320,6 +395,12 @@ contract MeuToken is ERC20, Ownable {
         uniqueFingerprint = _uniqueFingerprint;
 
         uint256 multiplier = 10 ** uint256(tokenDecimals);
+
+        require(
+            initialSupply <= type(uint256).max / multiplier,
+            "Initial supply overflow"
+        );
+
         _mint(initialHolder, initialSupply * multiplier);
     }
 
@@ -328,10 +409,12 @@ contract MeuToken is ERC20, Ownable {
     }
 EOF
 
-# Incluir Mint somente quando SIM
-if [[ "$MINT_ENABLED" == "true" ]]; then
-cat >> contracts/MeuToken.sol <<'EOF'
+# ---------------- Mint condicional ----------------
 
+if [[ "$MINT_ENABLED" == "true" ]]; then
+    cat >> contracts/MeuToken.sol <<'EOF'
+
+    // Mint: somente o proprietário pode emitir novos tokens.
     function mint(address to, uint256 amount) external onlyOwner {
         require(to != address(0), "Invalid recipient");
         _mint(to, amount);
@@ -339,319 +422,387 @@ cat >> contracts/MeuToken.sol <<'EOF'
 EOF
 fi
 
-# Incluir Burn somente quando SIM
-if [[ "$BURN_ENABLED" == "true" ]]; then
-cat >> contracts/MeuToken.sol <<'EOF'
+# ---------------- Burn condicional ----------------
 
+if [[ "$BURN_ENABLED" == "true" ]]; then
+    cat >> contracts/MeuToken.sol <<'EOF'
+
+    // Burn: cada titular pode queimar seus próprios tokens.
     function burn(uint256 amount) external {
         _burn(msg.sender, amount);
     }
 EOF
 fi
 
-# Fechar contrato
 echo "}" >> contracts/MeuToken.sol
 
+# ============================================================
+# HARDHAT
+# ============================================================
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# ---------------- Hardhat multirrede EVM ----------------
 cat > hardhat.config.js <<'EOF'
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config();
+
 const fs = require("fs");
 
-const tokenConfig = JSON.parse(fs.readFileSync(".token-config.json", "utf8"));
+const tokenConfig = JSON.parse(
+    fs.readFileSync(".token-config.json", "utf8")
+);
+
 const selected = tokenConfig.network;
 
-if (!selected || selected.family !== "evm" || selected.module !== "evm" || !selected.chainId) {
-  throw new Error("Configuração de rede EVM ausente ou inválida em .token-config.json");
+if (
+    !selected ||
+    selected.family !== "evm" ||
+    selected.module !== "evm" ||
+    !selected.chainId
+) {
+    throw new Error("Configuração de rede EVM inválida.");
 }
+
 if (!process.env.RPC_URL) {
-  throw new Error("RPC_URL não configurada no .env");
+    throw new Error("RPC_URL não configurada no .env.");
 }
 
 module.exports = {
-  solidity: {
-    version: "0.8.20",
-    settings: { optimizer: { enabled: true, runs: 200 } }
-  },
-  networks: {
-    selected: {
-      url: process.env.RPC_URL,
-      chainId: Number(selected.chainId),
-      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : []
+    solidity: {
+        version: "0.8.20",
+        settings: {
+            optimizer: {
+                enabled: true,
+                runs: 200
+            }
+        }
+    },
+    networks: {
+        selected: {
+            url: process.env.RPC_URL,
+            chainId: Number(selected.chainId),
+            accounts: process.env.PRIVATE_KEY
+                ? [process.env.PRIVATE_KEY]
+                : []
+        }
     }
-  }
 };
 EOF
 
-# ---------------- Implantação multirrede EVM ----------------
+# ============================================================
+# IMPLANTAÇÃO
+# ============================================================
+
 cat > scripts/deploy.js <<'EOF'
 const hre = require("hardhat");
 const fs = require("fs");
 const path = require("path");
 
 async function main() {
-  if (!process.env.PRIVATE_KEY) {
-    throw new Error("PRIVATE_KEY não configurada no arquivo .env");
-  }
+    if (!process.env.PRIVATE_KEY) {
+        throw new Error("PRIVATE_KEY não configurada no .env.");
+    }
 
-  const configPath = path.join(__dirname, "../.token-config.json");
-  if (!fs.existsSync(configPath)) {
-    throw new Error("Configuração .token-config.json não encontrada. Execute o instalador.");
-  }
+    const configPath = path.join(__dirname, "../.token-config.json");
 
-  const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const selected = cfg.network;
-  if (!selected || selected.family !== "evm" || selected.module !== "evm") {
-    throw new Error("Esta versão do instalador suporta implantação apenas em redes EVM.");
-  }
+    if (!fs.existsSync(configPath)) {
+        throw new Error(".token-config.json não encontrado.");
+    }
 
-  const network = await hre.ethers.provider.getNetwork();
-  const expectedChainId = BigInt(selected.chainId);
-  if (network.chainId !== expectedChainId) {
-    throw new Error(`Rede incorreta: ${network.chainId}. Esperado: ${expectedChainId} (${selected.name}).`);
-  }
+    const cfg = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    const selected = cfg.network;
 
-  const [deployer] = await hre.ethers.getSigners();
-  if (!deployer) throw new Error("Carteira de implantação não carregada.");
-  const balance = await hre.ethers.provider.getBalance(deployer.address);
-  if (balance === 0n) {
-    throw new Error(`A carteira não possui ${selected.nativeSymbol} para pagar o gas.`);
-  }
+    if (!selected || selected.family !== "evm" || selected.module !== "evm") {
+        throw new Error("Esta versão suporta somente redes EVM.");
+    }
 
-  const initialHolder = cfg.initialHolder || deployer.address;
-  if (!hre.ethers.isAddress(initialHolder)) {
-    throw new Error("Endereço inicial inválido.");
-  }
+    const network = await hre.ethers.provider.getNetwork();
+    const expectedChainId = BigInt(selected.chainId);
 
-  console.log("====================================");
-  console.log(`IMPLANTANDO TOKEN EM ${selected.name.toUpperCase()}`);
-  console.log("====================================");
-  console.log("Nome:", cfg.name);
-  console.log("Símbolo:", cfg.symbol);
-  console.log("Emissão inicial:", cfg.initialSupply);
-  console.log("Decimais:", cfg.decimals);
-  console.log("Carteira inicial:", initialHolder);
-  console.log("Carteira implantadora:", deployer.address);
-  console.log(`Saldo ${selected.nativeSymbol}:`, hre.ethers.formatEther(balance));
+    if (network.chainId !== expectedChainId) {
+        throw new Error(
+            `Rede incorreta: ${network.chainId}. Esperado: ${expectedChainId}.`
+        );
+    }
 
-  const uniqueTokenId = hre.ethers.hexlify(hre.ethers.randomBytes(32));
-  const uniqueFingerprint = hre.ethers.hexlify(hre.ethers.randomBytes(32));
-  console.log("Identificador único (tokenId):", uniqueTokenId);
-  console.log("Identificador único (fingerprint):", uniqueFingerprint);
+    const [deployer] = await hre.ethers.getSigners();
 
-  const Token = await hre.ethers.getContractFactory("MeuToken");
+    if (!deployer) {
+        throw new Error("Carteira de implantação não carregada.");
+    }
 
+    const balance = await hre.ethers.provider.getBalance(deployer.address);
 
+    if (balance === 0n) {
+        throw new Error(
+            `A carteira não possui ${selected.nativeSymbol} para pagar o gas.`
+        );
+    }
 
-  const token = await Token.deploy(
-    cfg.name, cfg.symbol, cfg.initialSupply, cfg.decimals, initialHolder,
-    cfg.mintEnabled, cfg.burnEnabled, uniqueTokenId, uniqueFingerprint
-  );
+    const initialHolder = cfg.initialHolder || deployer.address;
 
-  const token = await Token.deploy(
-    cfg.name,
-    cfg.symbol,
-    cfg.initialSupply,
-    cfg.decimals,
-    initialHolder,
-    uniqueTokenId,
-    uniqueFingerprint
-  );
+    if (!hre.ethers.isAddress(initialHolder)) {
+        throw new Error("Endereço inicial inválido.");
+    }
 
-  await token.waitForDeployment();
+    // Verificação adicional do fornecimento antes da implantação.
+    const supply = BigInt(cfg.initialSupply);
+    const multiplier = 10n ** BigInt(cfg.decimals);
+    const maxUint256 = (1n << 256n) - 1n;
 
-  const address = await token.getAddress();
-  const tx = token.deploymentTransaction();
-  const explorerBase = String(selected.explorer || "").replace(/\/+$/, "");
-  const result = {
-    network: selected.name,
-    networkKey: selected.key,
-    chainId: Number(selected.chainId),
-    nativeCurrency: selected.nativeSymbol,
-    name: await token.name(),
-    symbol: await token.symbol(),
-    totalSupply: (await token.totalSupply()).toString(),
-    decimals: Number(await token.decimals()),
-    mintEnabled: cfg.mintEnabled,
-    burnEnabled: cfg.burnEnabled,
-    tokenId: await token.tokenId(),
-    uniqueFingerprint: await token.uniqueFingerprint(),
-    description: cfg.description,
-    initialHolder,
-    deployer: deployer.address,
-    contractAddress: address,
-    transactionHash: tx ? tx.hash : null,
-    explorer: explorerBase ? `${explorerBase}/address/${address}` : null,
-    deployedAt: new Date().toISOString()
-  };
+    if (supply <= 0n || supply > maxUint256 / multiplier) {
+        throw new Error("Fornecimento inicial ultrapassa o limite permitido.");
+    }
 
-  const outputDir = path.join(__dirname, `../deployments/${selected.key}`);
-  fs.mkdirSync(outputDir, { recursive: true });
-  const output = path.join(outputDir, "deployment.json");
-  fs.writeFileSync(output, JSON.stringify(result, null, 2) + "\n", { mode: 0o600 });
+    console.log("====================================");
+    console.log(`IMPLANTANDO TOKEN EM ${selected.name.toUpperCase()}`);
+    console.log("====================================");
+    console.log("Nome:", cfg.name);
+    console.log("Símbolo:", cfg.symbol);
+    console.log("Emissão inicial:", cfg.initialSupply);
+    console.log("Decimais:", cfg.decimals);
+    console.log("Carteira inicial:", initialHolder);
+    console.log("Carteira implantadora:", deployer.address);
+    console.log("Mint:", cfg.mintEnabled ? "Habilitado" : "Desabilitado");
+    console.log("Burn:", cfg.burnEnabled ? "Habilitado" : "Desabilitado");
+    console.log(
+        `Saldo ${selected.nativeSymbol}:`,
+        hre.ethers.formatEther(balance)
+    );
 
-  console.log("====================================");
-  console.log("TOKEN PUBLICADO!");
-  console.log(JSON.stringify(result, null, 2));
-  console.log("Registro salvo em:", output);
+    // Identificadores exclusivos desta implantação.
+    const uniqueTokenId = hre.ethers.hexlify(
+        hre.ethers.randomBytes(32)
+    );
+
+    const uniqueFingerprint = hre.ethers.hexlify(
+        hre.ethers.randomBytes(32)
+    );
+
+    console.log("Token ID:", uniqueTokenId);
+    console.log("Fingerprint:", uniqueFingerprint);
+
+    const Token = await hre.ethers.getContractFactory("MeuToken");
+
+    const token = await Token.deploy(
+        cfg.name,
+        cfg.symbol,
+        cfg.initialSupply,
+        cfg.decimals,
+        initialHolder,
+        uniqueTokenId,
+        uniqueFingerprint
+    );
+
+    await token.waitForDeployment();
+
+    const address = await token.getAddress();
+    const tx = token.deploymentTransaction();
+
+    const explorerBase = String(selected.explorer || "")
+        .replace(/\/+$/, "");
+
+    const result = {
+        network: selected.name,
+        networkKey: selected.key,
+        chainId: Number(selected.chainId),
+        nativeCurrency: selected.nativeSymbol,
+        name: await token.name(),
+        symbol: await token.symbol(),
+        totalSupply: (await token.totalSupply()).toString(),
+        decimals: Number(await token.decimals()),
+        mintEnabled: cfg.mintEnabled,
+        burnEnabled: cfg.burnEnabled,
+        tokenId: await token.tokenId(),
+        uniqueFingerprint: await token.uniqueFingerprint(),
+        description: cfg.description,
+        initialHolder,
+        deployer: deployer.address,
+        contractAddress: address,
+        transactionHash: tx ? tx.hash : null,
+        explorer: explorerBase
+            ? `${explorerBase}/address/${address}`
+            : null,
+        deployedAt: new Date().toISOString()
+    };
+
+    const outputDir = path.join(
+        __dirname,
+        `../deployments/${selected.key}`
+    );
+
+    fs.mkdirSync(outputDir, { recursive: true });
+
+    const output = path.join(outputDir, "deployment.json");
+
+    fs.writeFileSync(
+        output,
+        JSON.stringify(result, null, 2) + "\n",
+        { mode: 0o600 }
+    );
+
+    console.log("====================================");
+    console.log("TOKEN PUBLICADO!");
+    console.log(JSON.stringify(result, null, 2));
+    console.log("Registro salvo em:", output);
 }
 
 main().catch(error => {
-  console.error("ERRO:", error);
-  process.exitCode = 1;
+    console.error("ERRO:", error);
+    process.exitCode = 1;
 });
 EOF
 
+# ============================================================
+# TESTES
+# ============================================================
 
-# ---------------- Testes ----------------
 cat > test/MeuToken.js <<'EOF'
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const config = require("../.token-config.json");
 
 describe("MeuToken personalizavel", function () {
-  async function deployToken(options = {}) {
-    const [owner, other] = await ethers.getSigners();
-    const Token = await ethers.getContractFactory("MeuToken");
 
-    const token = await Token.deploy(
-      options.name || "Minha Moeda",
-      options.symbol || "MMC",
-      options.supply || "10000000",
-      options.decimals ?? 18,
-      options.holder || owner.address,
-      ethers.hexlify(ethers.randomBytes(32)), // tokenId
-      ethers.hexlify(ethers.randomBytes(32))  // uniqueFingerprint
-    );
+    async function deployToken(options = {}) {
+        const [owner, other] = await ethers.getSigners();
 
-    await token.waitForDeployment();
-    return { token, owner, other };
-  }
+        const Token = await ethers.getContractFactory("MeuToken");
 
-  it("armazena um identificador unico nao nulo", async function () {
-    const { token } = await deployToken();
+        const token = await Token.deploy(
+            options.name || "Minha Moeda",
+            options.symbol || "MMC",
+            options.supply || "10000000",
+            options.decimals ?? 18,
+            options.holder || owner.address,
+            ethers.hexlify(ethers.randomBytes(32)),
+            ethers.hexlify(ethers.randomBytes(32))
+        );
 
-    expect(await token.tokenId()).to.match(/^0x[0-9a-fA-F]{64}$/);
-    expect(await token.tokenId()).to.not.equal(ethers.ZeroHash);
-  });
+        await token.waitForDeployment();
 
-  it("armazena um fingerprint unico nao nulo", async function () {
-    const { token } = await deployToken();
+        return { token, owner, other };
+    }
 
-    expect(await token.uniqueFingerprint()).to.match(/^0x[0-9a-fA-F]{64}$/);
-    expect(await token.uniqueFingerprint()).to.not.equal(ethers.ZeroHash);
-  });
+    it("armazena um identificador único não nulo", async function () {
+        const { token } = await deployToken();
 
-  it("emite a quantidade inicial para a carteira escolhida", async function () {
-    const { token, owner } = await deployToken({
-      supply: "2500"
+        expect(await token.tokenId()).to.match(/^0x[0-9a-fA-F]{64}$/);
+        expect(await token.tokenId()).to.not.equal(ethers.ZeroHash);
     });
 
-    expect(await token.balanceOf(owner.address))
-      .to.equal(ethers.parseUnits("2500", 18));
+    it("armazena um fingerprint único não nulo", async function () {
+        const { token } = await deployToken();
 
-    expect(await token.totalSupply())
-      .to.equal(ethers.parseUnits("2500", 18));
-  });
+        expect(await token.uniqueFingerprint())
+            .to.match(/^0x[0-9a-fA-F]{64}$/);
 
-  it("usa as casas decimais configuradas", async function () {
-    const { token } = await deployToken({ decimals: 6 });
-
-    expect(await token.decimals()).to.equal(6);
-
-    expect(await token.totalSupply())
-      .to.equal(10_000_000n * 10n ** 6n);
-  });
-
-  // ---------------- MINT ----------------
-
-  if (config.mintEnabled === true) {
-
-    it("possui funcao mint quando habilitada", async function () {
-      const { token, owner, other } = await deployToken();
-
-      expect(token.interface.hasFunction("mint")).to.equal(true);
-
-      await token.mint(other.address, 100n);
-
-      expect(await token.balanceOf(other.address)).to.equal(100n);
+        expect(await token.uniqueFingerprint())
+            .to.not.equal(ethers.ZeroHash);
     });
 
-    it("permite mint somente pelo proprietario", async function () {
-      const { token, other } = await deployToken();
+    it("emite a quantidade inicial para a carteira escolhida", async function () {
+        const { token, owner } = await deployToken({
+            supply: "2500"
+        });
 
-      await expect(
-        token.connect(other).mint(other.address, 100n)
-      ).to.be.reverted;
+        expect(await token.balanceOf(owner.address))
+            .to.equal(ethers.parseUnits("2500", 18));
+
+        expect(await token.totalSupply())
+            .to.equal(ethers.parseUnits("2500", 18));
     });
 
-  } else {
+    it("usa as casas decimais configuradas", async function () {
+        const { token } = await deployToken({ decimals: 6 });
 
-    it("nao possui funcao mint quando desabilitada", async function () {
-      const { token } = await deployToken();
+        expect(await token.decimals()).to.equal(6);
 
-      expect(token.interface.hasFunction("mint")).to.equal(false);
+        expect(await token.totalSupply())
+            .to.equal(10_000_000n * 10n ** 6n);
     });
 
-  }
+    // ---------------- MINT ----------------
 
-  // ---------------- BURN ----------------
+    if (config.mintEnabled === true) {
 
-  if (config.burnEnabled === true) {
+        it("possui mint quando habilitado", async function () {
+            const { token, other } = await deployToken();
 
-    it("possui funcao burn quando habilitada", async function () {
-      const { token, owner } = await deployToken();
+            expect(token.interface.hasFunction("mint"))
+                .to.equal(true);
 
-      expect(token.interface.hasFunction("burn")).to.equal(true);
+            await token.mint(other.address, 100n);
 
-      const initialBalance = await token.balanceOf(owner.address);
+            expect(await token.balanceOf(other.address))
+                .to.equal(100n);
+        });
 
-      await token.burn(ethers.parseUnits("100", 18));
+        it("permite mint somente pelo proprietário", async function () {
+            const { token, other } = await deployToken();
 
-      expect(await token.balanceOf(owner.address))
-        .to.equal(initialBalance - ethers.parseUnits("100", 18));
-    });
+            await expect(
+                token.connect(other).mint(other.address, 100n)
+            ).to.be.reverted;
+        });
 
-  } else {
+    } else {
 
-    it("nao possui funcao burn quando desabilitada", async function () {
-      const { token } = await deployToken();
+        it("não possui mint quando desabilitado", async function () {
+            const { token } = await deployToken();
 
-      expect(token.interface.hasFunction("burn")).to.equal(false);
-    });
+            expect(token.interface.hasFunction("mint"))
+                .to.equal(false);
+        });
 
-  }
+    }
+
+    // ---------------- BURN ----------------
+
+    if (config.burnEnabled === true) {
+
+        it("possui burn quando habilitado", async function () {
+            const { token, owner } = await deployToken();
+
+            expect(token.interface.hasFunction("burn"))
+                .to.equal(true);
+
+            const initialBalance = await token.balanceOf(owner.address);
+            const amount = ethers.parseUnits("100", 18);
+
+            await token.burn(amount);
+
+            expect(await token.balanceOf(owner.address))
+                .to.equal(initialBalance - amount);
+        });
+
+    } else {
+
+        it("não possui burn quando desabilitado", async function () {
+            const { token } = await deployToken();
+
+            expect(token.interface.hasFunction("burn"))
+                .to.equal(false);
+        });
+
+    }
 
 });
 EOF
 
+# ============================================================
+# ARQUIVOS .ENV
+# ============================================================
 
-# ---------------- .env ----------------
 if [[ ! -f .env ]]; then
-  cat > .env <<EOF
+    cat > .env <<EOF
 RPC_URL=${NETWORK_DEFAULT_RPC}
 PRIVATE_KEY=
 EOF
-  chmod 600 .env
 else
-  chmod 600 .env
-  echo "Arquivo .env existente preservado."
-  echo "Confira se RPC_URL corresponde à rede selecionada: ${NETWORK_NAME}."
+    echo "Arquivo .env existente preservado."
+    echo "Confira se RPC_URL corresponde à rede: ${NETWORK_NAME}."
 fi
+
+chmod 600 .env
 
 cat > .env.example <<EOF
 RPC_URL=${NETWORK_DEFAULT_RPC}
@@ -667,47 +818,75 @@ artifacts/
 coverage/
 EOF
 
-# ---------------- Verificar carteira ----------------
-# ---------------- Verificar carteira ----------------
-cat > verificar_carteira.sh <<EOF
+# ============================================================
+# VERIFICAR CARTEIRA
+# ============================================================
+
+cat > verificar_carteira.sh <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
-PROJECT_DIR="${PROJECT_DIR}"
-cd "\${PROJECT_DIR}"
+
+cd "$(dirname "$0")"
 
 node <<'NODE'
 require("dotenv").config();
+
 const fs = require("fs");
-const { JsonRpcProvider, Wallet, formatEther } = require("ethers");
+const {
+    JsonRpcProvider,
+    Wallet,
+    formatEther
+} = require("ethers");
 
 async function main() {
-  if (!process.env.RPC_URL || !process.env.PRIVATE_KEY) {
-    throw new Error("Configure RPC_URL e PRIVATE_KEY no .env.");
-  }
-  const cfg = JSON.parse(fs.readFileSync(".token-config.json", "utf8"));
-  const provider = new JsonRpcProvider(process.env.RPC_URL);
-  const network = await provider.getNetwork();
-  const expected = BigInt(cfg.network.chainId);
-  if (network.chainId !== expected) {
-    throw new Error(\`Rede incorreta: \${network.chainId}. Esperado \${expected} (\${cfg.network.name}).\`);
-  }
-  const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
-  const balance = await provider.getBalance(wallet.address);
-  console.log("Rede:", cfg.network.name);
-  console.log("Chain ID:", network.chainId.toString());
-  console.log("Carteira:", wallet.address);
-  console.log(\`Saldo \${cfg.network.nativeSymbol}:\`, formatEther(balance));
-  if (balance === 0n) console.log("ATENÇÃO: carteira sem saldo para gas.");
+    if (!process.env.RPC_URL || !process.env.PRIVATE_KEY) {
+        throw new Error("Configure RPC_URL e PRIVATE_KEY no .env.");
+    }
+
+    const cfg = JSON.parse(
+        fs.readFileSync(".token-config.json", "utf8")
+    );
+
+    const provider = new JsonRpcProvider(process.env.RPC_URL);
+    const network = await provider.getNetwork();
+
+    const expected = BigInt(cfg.network.chainId);
+
+    if (network.chainId !== expected) {
+        throw new Error(
+            `Rede incorreta: ${network.chainId}. Esperado ${expected}.`
+        );
+    }
+
+    const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
+    const balance = await provider.getBalance(wallet.address);
+
+    console.log("Rede:", cfg.network.name);
+    console.log("Chain ID:", network.chainId.toString());
+    console.log("Carteira:", wallet.address);
+
+    console.log(
+        `Saldo ${cfg.network.nativeSymbol}:`,
+        formatEther(balance)
+    );
+
+    if (balance === 0n) {
+        console.log("ATENÇÃO: carteira sem saldo para gas.");
+    }
 }
+
 main().catch(error => {
-  console.error("ERRO:", error.message);
-  process.exitCode = 1;
+    console.error("ERRO:", error.message);
+    process.exitCode = 1;
 });
 NODE
 EOF
+
 chmod +x verificar_carteira.sh
 
-
+# ============================================================
+# VALIDADOR DE CONTRATO
+# ============================================================
 
 cat > validar_moeda.sh <<'PUBLICAR_EOF'
 #!/usr/bin/env bash
@@ -715,26 +894,13 @@ set -Eeuo pipefail
 
 # ============================================================
 # VALIDADOR AUXILIAR DE TOKEN EVM
-#
-# FUNÇÃO:
-#   Consultar informações públicas de um contrato ERC-20.
-#
-# SEGURANÇA:
-#   - Não solicita chave privada.
-#   - Não acessa credenciais da carteira.
-#   - Não cria nem modifica .env.
-#   - Não executa transações.
-#   - Não movimenta tokens.
-#   - Não altera contratos.
-#   - Utiliza somente consultas RPC.
+# Somente leitura. Não utiliza chave privada.
 # ============================================================
 
 if [[ "${EUID}" -ne 0 ]]; then
     echo "Execute como root: sudo bash validar_moeda.sh"
     exit 1
 fi
-
-# ---------------- Diretórios ----------------
 
 PROJECT_DIR="__PROJECT_DIR__"
 BUILD_DIR="${PROJECT_DIR}/build"
@@ -744,11 +910,8 @@ mkdir -p "${BUILD_DIR}" "${LOG_DIR}"
 
 LOG_FILE="${LOG_DIR}/validar_moeda.log"
 
-# ---------------- Dependências ----------------
-
 if ! command -v node >/dev/null 2>&1; then
     echo "[ERRO] Node.js não encontrado."
-    echo "Instale Node.js 20 ou superior."
     exit 1
 fi
 
@@ -757,36 +920,27 @@ if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0
     exit 1
 fi
 
-echo "Node.js: $(node -v)"
-
-# ---------------- Projeto ----------------
-
 cd "${PROJECT_DIR}"
 
 if [[ ! -f package.json ]]; then
     echo "[ERRO] package.json não encontrado."
-    echo "O projeto precisa estar inicializado."
     exit 1
 fi
 
-# Verifica se ethers já está instalado.
 if ! node -e 'require.resolve("ethers")' >/dev/null 2>&1; then
     echo "[ERRO] Dependência ethers não encontrada."
-    echo "Instale-a no projeto antes de executar o validador."
     exit 1
 fi
 
-# ---------------- Coleta de dados ----------------
-
-echo ""
+echo
 echo "============================================================"
 echo "           VALIDADOR DE TOKEN - REDE EVM"
 echo "============================================================"
-echo ""
+echo
 echo "Este procedimento utiliza somente consultas públicas."
 echo "Nenhuma chave privada será solicitada."
 echo "Nenhuma transação será executada."
-echo ""
+echo
 
 read -r -p "RPC da rede EVM: " RPC_URL
 read -r -p "Endereço do contrato do token: " TOKEN_ADDRESS
@@ -806,14 +960,11 @@ if [[ ! "${TOKEN_ADDRESS}" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
     exit 1
 fi
 
-# ---------------- Geração do validador ----------------
-
 cat > "${PROJECT_DIR}/validar_moeda.js" <<'JS_EOF'
 const { ethers } = require("ethers");
 const fs = require("fs");
 
 async function main() {
-
     const rpcUrl = process.env.RPC_URL;
     const tokenAddress = process.env.TOKEN_ADDRESS;
 
@@ -832,19 +983,15 @@ async function main() {
     console.log("============================================\n");
 
     const provider = new ethers.JsonRpcProvider(rpcUrl);
-
-    // Verifica conexão
     const network = await provider.getNetwork();
 
     console.log("[OK] Conexão com a blockchain.");
     console.log(`Chain ID: ${network.chainId}`);
 
-    // Verifica bloco atual
     const blockNumber = await provider.getBlockNumber();
 
     console.log(`Bloco atual: ${blockNumber}`);
 
-    // Verifica existência do contrato
     const code = await provider.getCode(address);
 
     if (code === "0x") {
@@ -853,17 +1000,14 @@ async function main() {
 
     console.log("\n[OK] Contrato encontrado.");
     console.log(`Endereço: ${address}`);
-    console.log(`Bytecode: ${((code.length - 2) / 2)} bytes`);
+    console.log(`Bytecode: ${(code.length - 2) / 2} bytes`);
 
-    // ABI exclusivamente de leitura
     const abi = [
         "function name() view returns (string)",
         "function symbol() view returns (string)",
         "function decimals() view returns (uint8)",
         "function totalSupply() view returns (uint256)",
-        "function owner() view returns (address)",
-        "function mintEnabled() view returns (bool)",
-        "function burnEnabled() view returns (bool)"
+        "function owner() view returns (address)"
     ];
 
     const token = new ethers.Contract(address, abi, provider);
@@ -883,7 +1027,8 @@ async function main() {
         checks: {}
     };
 
-    // Metadados ERC-20
+    // ---------------- Dados ERC-20 ----------------
+
     console.log("\n============================================");
     console.log("             DADOS DO TOKEN");
     console.log("============================================");
@@ -893,8 +1038,8 @@ async function main() {
         result.checks.name = true;
         console.log(`Nome: ${result.name}`);
     } catch {
-        console.log("[AVISO] Nome não disponível.");
         result.checks.name = false;
+        console.log("[AVISO] Nome não disponível.");
     }
 
     try {
@@ -902,8 +1047,8 @@ async function main() {
         result.checks.symbol = true;
         console.log(`Símbolo: ${result.symbol}`);
     } catch {
-        console.log("[AVISO] Símbolo não disponível.");
         result.checks.symbol = false;
+        console.log("[AVISO] Símbolo não disponível.");
     }
 
     try {
@@ -911,8 +1056,8 @@ async function main() {
         result.checks.decimals = true;
         console.log(`Decimais: ${result.decimals}`);
     } catch {
-        console.log("[AVISO] Decimais não disponíveis.");
         result.checks.decimals = false;
+        console.log("[AVISO] Decimais não disponíveis.");
     }
 
     try {
@@ -926,13 +1071,13 @@ async function main() {
             : supply.toString();
 
         console.log(`Supply: ${formatted} ${result.symbol || ""}`);
-
     } catch {
-        console.log("[AVISO] Supply não disponível.");
         result.checks.totalSupply = false;
+        console.log("[AVISO] Supply não disponível.");
     }
 
-    // Proprietário
+    // ---------------- Administração ----------------
+
     console.log("\n============================================");
     console.log("              ADMINISTRAÇÃO");
     console.log("============================================");
@@ -942,36 +1087,89 @@ async function main() {
         result.checks.owner = true;
         console.log(`Proprietário: ${result.owner}`);
     } catch {
-        console.log("Contrato não disponibiliza owner().");
         result.checks.owner = false;
+        console.log("Contrato não disponibiliza owner().");
     }
 
-    // Configurações opcionais do contrato
-    try {
-        result.mintEnabled = await token.mintEnabled();
-        result.checks.mintEnabled = true;
+    // ========================================================
+    // VERIFICAÇÃO REAL DAS FUNÇÕES MINT E BURN
+    //
+    // O contrato não possui mintEnabled() ou burnEnabled().
+    // Por isso, a verificação utiliza chamadas eth_call.
+    //
+    // Não executa transações e não altera o contrato.
+    // ========================================================
 
-        console.log(
-            `Mint: ${result.mintEnabled ? "ATIVADO" : "DESATIVADO"}`
+    const functionInterface = new ethers.Interface([
+        "function mint(address to, uint256 amount)",
+        "function burn(uint256 amount)"
+    ]);
+
+    async function checkFunction(functionName, args, from) {
+        try {
+            const data = functionInterface.encodeFunctionData(
+                functionName,
+                args
+            );
+
+            await provider.call({
+                to: address,
+                from,
+                data
+            });
+
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    console.log("\n============================================");
+    console.log("          FUNÇÕES DO CONTRATO");
+    console.log("============================================");
+
+    if (result.owner) {
+        // Mint é chamado pelo proprietário, com quantidade zero.
+        // Isso permite verificar se a função existe e está acessível.
+        result.mintEnabled = await checkFunction(
+            "mint",
+            [result.owner, 0n],
+            result.owner
         );
-    } catch {
-        console.log("Mint: configuração não consultável.");
-        result.checks.mintEnabled = false;
-    }
 
-    try {
-        result.burnEnabled = await token.burnEnabled();
+        // Burn é chamado pelo proprietário, com quantidade zero.
+        // A chamada é somente leitura e não queima tokens.
+        result.burnEnabled = await checkFunction(
+            "burn",
+            [0n],
+            result.owner
+        );
+
+        result.checks.mintEnabled = true;
         result.checks.burnEnabled = true;
 
         console.log(
-            `Burn: ${result.burnEnabled ? "ATIVADO" : "DESATIVADO"}`
+            `Mint: ${result.mintEnabled ? "PRESENTE" : "AUSENTE"}`
         );
-    } catch {
-        console.log("Burn: configuração não consultável.");
+
+        console.log(
+            `Burn: ${result.burnEnabled ? "PRESENTE" : "AUSENTE"}`
+        );
+    } else {
+        result.checks.mintEnabled = false;
         result.checks.burnEnabled = false;
+
+        console.log(
+            "Mint: não foi possível verificar sem consultar owner()."
+        );
+
+        console.log(
+            "Burn: não foi possível verificar sem consultar owner()."
+        );
     }
 
-    // Relatório
+    // ---------------- Relatório ----------------
+
     const reportPath = process.env.REPORT_FILE;
 
     if (reportPath) {
@@ -992,28 +1190,29 @@ async function main() {
     console.log("[OK] Nenhum arquivo .env modificado.");
 
     if (result.mintEnabled === true) {
-        console.log("[ALERTA] Mint está habilitado.");
+        console.log("[ALERTA] Função Mint presente no contrato.");
+    } else if (result.mintEnabled === false) {
+        console.log("[OK] Função Mint ausente.");
     }
 
     if (result.burnEnabled === true) {
-        console.log("[ALERTA] Burn está habilitado.");
+        console.log("[ALERTA] Função Burn presente no contrato.");
+    } else if (result.burnEnabled === false) {
+        console.log("[OK] Função Burn ausente.");
     }
 
     console.log("\nATENÇÃO:");
     console.log("Esta verificação não substitui uma auditoria");
     console.log("de segurança do código ou do bytecode.");
-
 }
 
-main().catch((err) => {
+main().catch(err => {
     console.error("\n[ERRO]", err.message);
     process.exit(1);
 });
 JS_EOF
 
-# ---------------- Execução ----------------
-
-echo ""
+echo
 echo "Executando validação somente de leitura..."
 
 RPC_URL="${RPC_URL}" \
@@ -1021,38 +1220,43 @@ TOKEN_ADDRESS="${TOKEN_ADDRESS}" \
 REPORT_FILE="${BUILD_DIR}/relatorio_validacao.json" \
 node "${PROJECT_DIR}/validar_moeda.js" 2>&1 | tee -a "${LOG_FILE}"
 
-echo ""
+echo
 echo "============================================================"
 echo " VALIDAÇÃO CONCLUÍDA"
 echo "============================================================"
 echo "Log: ${LOG_FILE}"
 echo "Relatório: ${BUILD_DIR}/relatorio_validacao.json"
-echo ""
+echo
 echo "Nenhuma chave privada foi solicitada."
 echo "Nenhuma transação foi executada."
 echo "============================================================"
 
 PUBLICAR_EOF
 
-# Substitui o placeholder pelo caminho real do projeto
+# Substitui o marcador pelo caminho do projeto.
 sed -i "s|__PROJECT_DIR__|${PROJECT_DIR}|g" validar_moeda.sh
 
 chmod +x validar_moeda.sh
 
-
-
+# ============================================================
+# INSTALAÇÃO DAS DEPENDÊNCIAS
+# ============================================================
 
 echo
 echo "=========================================="
-echo "INSTALANDO DEPENDENCIAS"
+echo "INSTALANDO DEPENDÊNCIAS"
 echo "=========================================="
-npm install \
-  --fetch-retries=5 \
-  --fetch-retry-mintimeout=20000 \
-  --fetch-retry-maxtimeout=120000 \
-  --fetch-timeout=300000
 
-clear
+npm install \
+    --fetch-retries=5 \
+    --fetch-retry-mintimeout=20000 \
+    --fetch-retry-maxtimeout=120000 \
+    --fetch-timeout=300000
+
+# ============================================================
+# COMPILAÇÃO E TESTES
+# ============================================================
+
 echo
 echo "COMPILANDO CONTRATO..."
 npx hardhat compile
@@ -1061,130 +1265,123 @@ echo
 echo "EXECUTANDO TESTES..."
 npx hardhat test
 
+# ============================================================
+# AUDITORIA DE DEPENDÊNCIAS
+# ============================================================
+
 echo
-echo "EXECUTANDO AUDITORIA..."
-npm audit --omit=dev
+echo "EXECUTANDO AUDITORIA DE DEPENDÊNCIAS..."
+
+if ! npm audit --omit=dev; then
+    echo
+    echo "AVISO: npm audit encontrou vulnerabilidades."
+    echo "O projeto foi compilado e testado, mas revise os avisos."
+fi
+
+# ============================================================
+# README
+# ============================================================
 
 cat > readme.sh <<'EOF'
 #!/bin/bash
 set -Eeuo pipefail
-cd "$(dirname "$0")"
-CFG=".token-config.json"
 
-if [[ ! -f "$CFG" ]]; then
-  echo "Configuração não encontrada."
-  exit 1
-fi
+cd "$(dirname "$0")"
 
 node <<'NODE'
 const c = require("./.token-config.json");
+
 console.log("");
-console.log("PRÓXIMAS ETAPAS");
+console.log("==============================================");
+console.log("          INSTRUÇÕES DO TOKEN");
+console.log("==============================================");
 console.log("");
-console.log("Rede selecionada:", c.network.name);
+console.log("Rede:", c.network.name);
 console.log("Chain ID:", c.network.chainId);
 console.log("Moeda para gas:", c.network.nativeSymbol);
 console.log("");
-console.log("1. Abra a extensão MetaMask no Chrome. Clique no ícone da raposa ou no menu de extensões (ícone de quebra-cabeça).");
-console.log("2. link para extensão https://chromewebstore.google.com/detail/metamask/nkbihfbeogaeaoehlefnkodbefgpgknn");
-console.log("3. crie a conta e uma senha ou importe uma carteira existente e desbloqueie sua carteira.");
-console.log("4. Clique no seletor de contas, onde aparece o nome da sua conta.");
-console.log("5. Clique nos três pontinhos ao lado da conta desejada.");
-console.log("6. Selecione Detalhes da conta (Account details).");
-console.log("7. Clique em Mostrar chave privada (Show private key).");
-console.log("8. Digite a senha da MetaMask.");
-console.log("9. Pressione e segure Hold to reveal Private Key para revelar a chave e reserva esta informação");
-console.log("10. acesse o site https://www.alchemy.com/ loga cria um aplicativo para rede selecionada");
-console.log("11. pegue o link que gerar e reserve esta informação.");
-console.log("12. copia o link com a chave no final e substitue as duas variaveis no .env.");
-console.log("========================================================================================================================");
-console.log("13. Configure a PRIVATE_KEY e RPC_URL no arquivo .env");
-console.log("14. teste e verifique se tem saldo na carteira com o comando abaixo");
-console.log("./verificar_carteira.sh");
-console.log("15. Garanta que a carteira tenha Moeda para gas");
-console.log("16. Execute: npm run deploy");
-console.log("com isto criou o contrato, no entanto não deixou publico para compra/venda ainda");
+console.log("TOKEN");
+console.log("Nome:", c.name);
+console.log("Símbolo:", c.symbol);
+console.log("Supply inicial:", c.initialSupply);
+console.log("Decimais:", c.decimals);
+console.log("Mint:", c.mintEnabled ? "Habilitado" : "Desabilitado");
+console.log("Burn:", c.burnEnabled ? "Habilitado" : "Desabilitado");
 console.log("");
+console.log("PRÓXIMAS ETAPAS");
 console.log("");
-console.log("");
-console.log("");
-console.log("==============================================================");
-console.log("          REFERÊNCIAS DE REDES BLOCKCHAIN E DEX");
-console.log("==============================================================");
-console.log("");
-console.log("As redes disponíveis possuem ecossistemas próprios de negociação.");
-console.log("Abaixo estão algumas DEXs de referência para cada blockchain:");
-console.log("");
-console.log("REDE                  | DEX DE REFERÊNCIA");
-console.log("--------------------------------------------------------------");
-console.log("Polygon PoS           | QuickSwap");
-console.log("Ethereum Mainnet      | Uniswap");
-console.log("BNB Smart Chain       | PancakeSwap");
-console.log("Arbitrum One          | Uniswap");
-console.log("OP Mainnet            | Velodrome");
-console.log("Base                  | Aerodrome");
-console.log("Avalanche C-Chain     | Trader Joe");
-console.log("--------------------------------------------------------------");
-console.log("");
-console.log("SITES OFICIAIS:");
-console.log("");
-console.log("Polygon / QuickSwap:  https://quickswap.exchange");
-console.log("Ethereum / Uniswap:   https://app.uniswap.org");
-console.log("BNB / PancakeSwap:    https://pancakeswap.finance");
-console.log("Arbitrum / Uniswap:   https://app.uniswap.org");
-console.log("Optimism / Velodrome: https://velodrome.finance");
-console.log("Base / Aerodrome:     https://aerodrome.finance");
-console.log("Avalanche / Trader Joe: https://traderjoexyz.com");
-console.log("");
-console.log("IMPORTANTE:");
-console.log("1. As DEXs acima são referências, não integrações obrigatórias.");
-console.log("2. Confirme sempre se a DEX oferece suporte à rede selecionada.");
-console.log("3. Verifique se o par de negociação desejado está disponível.");
-console.log("4. O endereço do token deve corresponder à rede selecionada.");
-console.log("5. A criação do contrato não cria automaticamente uma pool.");
-console.log("6. Para negociar, é necessário criar um par e adicionar liquidez.");
-console.log("7. Verifique taxas, versões dos contratos e liquidez antes de operar.");
-console.log("");
-console.log("");
-console.log("");
-console.log("🛠️ Passo a passo na QuickSwap colocar para compra/venda na Rede escolhida");
-console.log("Vou usar como exemplo a criação de um par com USDC, que é uma stablecoin e ajuda a definir um preço mais estável para o seu token.");
-console.log("");
-console.log("1. Acesse e conecte a carteira: Vá ao site da QuickSwap (https://quickswap.exchange) e conecte a sua MetaMask. Certifique-se de que a rede selecionada na carteira da moeda criada.");
-console.log("2. Vá para a área de Liquidez: No menu principal, clique em \"Pool\" (ou \"Liquidez\").");
-console.log("");
-console.log("3. Inicie a criação do par: Clique no botão \"Create a pair\" ou \"Create a pool\" (ou \"Novo Posição\" / \"New Position\" / \"\" dependendo da versão da interface).");
-console.log("4. Selecione os tokens:");
-console.log("   - No primeiro campo, selecione o token de referência (ex: USDC).");
-console.log("   - No segundo campo, cole o endereço do contrato do seu token recém-criado. A QuickSwap vai buscá-lo automaticamente.");
-console.log("");
-console.log("5. Defina o preço inicial: Como o seu token é novo, você precisará definir o preço inicial em relação ao outro token. Por exemplo, se quiser que 1 seu token valha 0.10 USDC, insira essa proporção. A interface geralmente pede para você inserir a quantidade de um dos tokens e ela calcula o outro.");
-console.log("6. Insira os valores e aprove: Digite a quantidade de liquidez que deseja depositar. Você precisará de uma quantidade equivalente em valor dos dois tokens (ex: se depositar 1000 USDC, precisará de 10.000 do seu token, seguindo o preço de 0.10). Clique em \"Approve\" (Aprovar) para cada token e confirme na MetaMask.");
-console.log("7. Confirme a criação: Após a aprovação, clique no botão final (\"Supply\" ou \"Add Liquidity\") e confirme a transação na sua carteira. Pronto, o pool está criado e o token já pode ser negociado.");
-console.log("");
-console.log("");
-console.log("");
-console.log("========================================================================================================================");
-console.log("1. Abra a MetaMask e selecione/adiciona a rede indicada.");
-console.log("2. Configure RPC_URL no .env com um endpoint confiável da rede selecionada.");
-console.log("3. Configure PRIVATE_KEY no .env. Prefira uma carteira dedicada, com saldo apenas para implantação.");
-console.log("4. Nunca compartilhe o arquivo .env ou a chave privada.");
-console.log("5. Verifique o saldo e a rede com: ./verificar_carteira.sh");
+console.log("1. Configure RPC_URL no arquivo .env.");
+console.log("2. Configure PRIVATE_KEY no arquivo .env.");
+console.log("3. Utilize uma carteira dedicada para implantação.");
+console.log("4. Nunca compartilhe a chave privada ou o arquivo .env.");
+console.log("5. Verifique a carteira: ./verificar_carteira.sh");
 console.log("6. Compile: npm run compile");
 console.log("7. Teste: npm test");
 console.log("8. Implante: npm run deploy");
 console.log("");
-console.log("O registro será salvo em deployments/" + c.network.key + "/deployment.json");
-console.log("Explorer:", c.network.explorer);
+console.log("O registro será salvo em:");
+console.log("deployments/" + c.network.key + "/deployment.json");
 console.log("");
-console.log("IMPORTANTE: o instalador atual usa o mesmo contrato Solidity ERC-20 somente em redes EVM.");
-console.log("Solana, TRON, Sui e Aptos aparecem no catálogo, mas permanecem desabilitadas e exigem módulos/contratos próprios.");
-console.log("A implantação não cria pool nem adiciona liquidez automaticamente. Isso deve ser feito separadamente na DEX da rede.");
+console.log("EXPLORER:");
+console.log(c.network.explorer || "Não informado");
 console.log("");
-console.log("digite ./readme.sh para ler estas instruções novamente.");
+console.log("REFERÊNCIAS DE DEX");
 console.log("");
+console.log("Polygon PoS       | QuickSwap");
+console.log("Ethereum          | Uniswap");
+console.log("BNB Smart Chain   | PancakeSwap");
+console.log("Arbitrum          | Uniswap");
+console.log("Optimism          | Velodrome");
+console.log("Base              | Aerodrome");
+console.log("Avalanche         | Trader Joe");
+console.log("");
+console.log("SITES:");
+console.log("QuickSwap:       https://quickswap.exchange");
+console.log("Uniswap:         https://app.uniswap.org");
+console.log("PancakeSwap:     https://pancakeswap.finance");
+console.log("Velodrome:       https://velodrome.finance");
+console.log("Aerodrome:       https://aerodrome.finance");
+console.log("Trader Joe:      https://traderjoexyz.com");
+console.log("");
+console.log("IMPORTANTE:");
+console.log("1. A implantação não cria uma pool automaticamente.");
+console.log("2. Para negociar, crie um par na DEX e adicione liquidez.");
+console.log("3. Confira a rede e os endereços dos tokens.");
+console.log("4. Confira taxas, liquidez e contratos da DEX.");
+console.log("5. O contrato utiliza ERC-20 e é destinado a redes EVM.");
+console.log("6. Outras blockchains exigem módulos e contratos próprios.");
+console.log("");
+console.log("Para consultar estas instruções novamente:");
+console.log("./readme.sh");
 console.log("");
 NODE
 EOF
+
 chmod +x readme.sh
+
+# ============================================================
+# FINALIZAÇÃO
+# ============================================================
+
+echo
+echo "=========================================="
+echo "INSTALAÇÃO CONCLUÍDA"
+echo "=========================================="
+echo "Projeto: ${PROJECT_DIR}"
+echo "Rede: ${NETWORK_NAME}"
+echo "Mint: $([[ "$MINT_ENABLED" == "true" ]] && echo "Habilitado" || echo "Desabilitado")"
+echo "Burn: $([[ "$BURN_ENABLED" == "true" ]] && echo "Habilitado" || echo "Desabilitado")"
+echo
+echo "Arquivos principais:"
+echo "  contracts/MeuToken.sol"
+echo "  scripts/deploy.js"
+echo "  test/MeuToken.js"
+echo "  validar_moeda.sh"
+echo "  verificar_carteira.sh"
+echo "  readme.sh"
+echo
+echo "Para consultar as instruções:"
+echo "  cd ${PROJECT_DIR} && ./readme.sh"
+echo "=========================================="
+
 ./readme.sh
