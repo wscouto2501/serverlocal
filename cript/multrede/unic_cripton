@@ -375,7 +375,7 @@ contract MeuToken is ERC20, Ownable {
 
     bytes32 public immutable tokenId;
     bytes32 public immutable uniqueFingerprint;
-
+   
     constructor(
         string memory tokenName,
         string memory tokenSymbol,
@@ -383,8 +383,9 @@ contract MeuToken is ERC20, Ownable {
         uint8 tokenDecimals,
         address initialHolder,
         bytes32 uniqueTokenId,
-        bytes32 _uniqueFingerprint
-    ) ERC20(tokenName, tokenSymbol) Ownable(msg.sender) {
+        bytes32 _uniqueFingerprint,
+        address tokenOwner
+    ) ERC20(tokenName, tokenSymbol) Ownable(tokenOwner) {
         require(initialHolder != address(0), "Invalid initial holder");
         require(tokenDecimals <= 18, "Decimals above 18");
         require(uniqueTokenId != bytes32(0), "Invalid token ID");
@@ -435,6 +436,75 @@ EOF
 fi
 
 echo "}" >> contracts/MeuToken.sol
+
+
+
+
+# ============================================================
+# FÁBRICA DE TOKENS - CREATE2
+# ============================================================
+
+cat > contracts/TokenFactory.sol <<'EOF'
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+import "./MeuToken.sol";
+
+contract TokenFactory {
+
+    event TokenDeployed(
+        address indexed tokenAddress,
+        address indexed owner,
+        bytes32 indexed salt
+    );
+
+    function deployToken(
+        string memory tokenName,
+        string memory tokenSymbol,
+        uint256 initialSupply,
+        uint8 tokenDecimals,
+        address initialHolder,
+        bytes32 uniqueTokenId,
+        bytes32 uniqueFingerprint,
+        bytes32 salt
+    ) external returns (address) {
+
+        // CREATE2 cria o token utilizando um salt exclusivo.
+        // O proprietário será a carteira que chamou a fábrica.
+        MeuToken token = new MeuToken{salt: salt}(
+            tokenName,
+            tokenSymbol,
+            initialSupply,
+            tokenDecimals,
+            initialHolder,
+            uniqueTokenId,
+            uniqueFingerprint,
+            msg.sender
+        );
+
+        address tokenAddress = address(token);
+
+        emit TokenDeployed(
+            tokenAddress,
+            msg.sender,
+            salt
+        );
+
+        return tokenAddress;
+    }
+}
+EOF
+
+
+
+
+
+
+
+
+
+
+
 
 # ============================================================
 # HARDHAT
@@ -580,22 +650,98 @@ async function main() {
     console.log("Token ID:", uniqueTokenId);
     console.log("Fingerprint:", uniqueFingerprint);
 
-    const Token = await hre.ethers.getContractFactory("MeuToken");
-
-    const token = await Token.deploy(
+   
+    // ============================================================
+    // IMPLANTAÇÃO UTILIZANDO CREATE2
+    // ============================================================
+    
+    // Carrega o contrato da fábrica.
+    const Factory = await hre.ethers.getContractFactory("TokenFactory");
+    
+    // Implanta uma fábrica para esta operação.
+    const factory = await Factory.deploy();
+    
+    await factory.waitForDeployment();
+    
+    const factoryAddress = await factory.getAddress();
+    
+    // ------------------------------------------------------------
+    // SALT EXCLUSIVO POR TOKEN E POR REDE
+    // ------------------------------------------------------------
+    
+    // Combina o Chain ID com o identificador aleatório do token.
+    // O Chain ID diferencia Polygon, Base, BNB Chain etc.
+    const uniqueSalt = hre.ethers.solidityPackedKeccak256(
+        ["uint256", "bytes32"],
+        [network.chainId, uniqueTokenId]
+    );
+    
+    console.log("Fábrica:", factoryAddress);
+    console.log("Chain ID:", network.chainId.toString());
+    console.log("Salt CREATE2:", uniqueSalt);
+    
+    // ------------------------------------------------------------
+    // CALCULAR O ENDEREÇO ANTES DA IMPLANTAÇÃO
+    // ------------------------------------------------------------
+    
+    // Simula a chamada para obter o endereço que será criado.
+    // Não executa uma transação.
+    const address = await factory.deployToken.staticCall(
         cfg.name,
         cfg.symbol,
         cfg.initialSupply,
         cfg.decimals,
         initialHolder,
         uniqueTokenId,
-        uniqueFingerprint
+        uniqueFingerprint,
+        uniqueSalt
     );
+    
+    // ------------------------------------------------------------
+    // IMPLANTAR O TOKEN
+    // ------------------------------------------------------------
+    
+    const deployTx = await factory.deployToken(
+        cfg.name,
+        cfg.symbol,
+        cfg.initialSupply,
+        cfg.decimals,
+        initialHolder,
+        uniqueTokenId,
+        uniqueFingerprint,
+        uniqueSalt
+    );
+    
+    const receipt = await deployTx.wait();
+    
+    if (!receipt || receipt.status !== 1) {
+        throw new Error("Falha na implantação do token.");
+    }
+    
+    // Recupera o contrato ERC-20 no endereço criado pela fábrica.
+    const token = await hre.ethers.getContractAt(
+        "MeuToken",
+        address
+    );
+    
+    // Hash da transação que efetivamente criou o token.
+    const tx = deployTx;
+    
+    console.log("Token implantado:", address);
+    console.log("Transação:", tx.hash);
 
-    await token.waitForDeployment();
 
-    const address = await token.getAddress();
-    const tx = token.deploymentTransaction();
+
+
+
+
+
+
+
+
+
+
+
 
     const explorerBase = String(selected.explorer || "")
         .replace(/\/+$/, "");
@@ -604,6 +750,8 @@ async function main() {
         network: selected.name,
         networkKey: selected.key,
         chainId: Number(selected.chainId),
+        factoryAddress: factoryAddress,
+        create2Salt: uniqueSalt,
         nativeCurrency: selected.nativeSymbol,
         name: await token.name(),
         symbol: await token.symbol(),
@@ -622,6 +770,7 @@ async function main() {
             ? `${explorerBase}/address/${address}`
             : null,
         deployedAt: new Date().toISOString()
+
     };
 
     const outputDir = path.join(
@@ -674,7 +823,8 @@ describe("MeuToken personalizavel", function () {
             options.decimals ?? 18,
             options.holder || owner.address,
             ethers.hexlify(ethers.randomBytes(32)),
-            ethers.hexlify(ethers.randomBytes(32))
+            ethers.hexlify(ethers.randomBytes(32)),
+            owner.address
         );
 
         await token.waitForDeployment();
