@@ -11,17 +11,38 @@ if [[ "${EUID}" -ne 0 ]]; then
     exit 1
 fi
 
-# ---------------- Node.js 20+ ----------------
+# ---------------- Node.js 24 LTS ----------------
 
-if ! command -v node >/dev/null 2>&1 || \
-   ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 20 ? 0 : 1)' 2>/dev/null; then
-    echo "Instalando Node.js 20..."
+NODE_MAJOR=""
+
+if command -v node >/dev/null 2>&1; then
+    NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
+fi
+
+# Instala Node.js 24 quando não estiver instalado ou estiver em outra versão.
+if [[ "$NODE_MAJOR" != "24" ]]; then
+
+    echo "Instalando Node.js 24 LTS..."
+
     apt-get update
     apt-get install -y ca-certificates curl
-    curl -fsSL https://deb.nodesource.com/setup_20.x -o /tmp/nodesource_setup.sh
+
+    curl -fsSL https://deb.nodesource.com/setup_24.x \
+        -o /tmp/nodesource_setup.sh
+
     bash /tmp/nodesource_setup.sh
+
     apt-get install -y nodejs
+
     rm -f /tmp/nodesource_setup.sh
+fi
+
+# Confirma a instalação.
+NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
+
+if [[ "$NODE_MAJOR" != "24" ]]; then
+    echo "ERRO: Node.js 24 não foi instalado corretamente."
+    exit 1
 fi
 
 echo "Node.js: $(node -v)"
