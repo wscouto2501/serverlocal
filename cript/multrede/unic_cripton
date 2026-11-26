@@ -2080,89 +2080,459 @@ chmod +x abiencode.sh
 
 echo "Arquivo abiencode.sh criado com sucesso."
 
-cat > contractautenticar.sh <<'AUTENTICAR_EOF'
+
+cat > contractautenticar.sh <<'SCRIPT_EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
 # ============================================================
-# GERAR STANDARD-INPUT JSON PARA VERIFICACAO DO CONTRATO
+# AUTENTICACAO / VERIFICACAO DE CONTRATO EVM
 # Hardhat - Solidity Standard JSON Input
+# Polygon, Base, BNB Chain, Ethereum e outras EVM
 # ============================================================
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-mkdir -p verificacao
+echo
+echo "============================================================"
+echo "       GERADOR DE DADOS PARA VERIFICACAO DO CONTRATO"
+echo "============================================================"
 
-ARQUIVO=$(find artifacts/build-info \
-    -maxdepth 1 \
-    -type f \
-    -name '*.json' \
-    ! -name '*.output.json' \
-    | head -n 1)
+# ------------------------------------------------------------
+# VALIDACOES
+# ------------------------------------------------------------
 
-if [[ -z "$ARQUIVO" ]]; then
-    echo "ERRO: arquivo de compilação não encontrado."
-    echo "Verifique se o contrato foi compilado pelo Hardhat."
+for DIR in "artifacts/build-info" "node_modules/ethers"; do
+    if [[ ! -d "$DIR" ]]; then
+        echo "ERRO: diretorio nao encontrado: $DIR"
+        exit 1
+    fi
+done
+
+if [[ ! -f ".token-config.json" ]]; then
+    echo "ERRO: .token-config.json nao encontrado."
     exit 1
 fi
 
-node -e '
-const fs = require("fs");
+if [[ ! -d "node_modules/dotenv" ]]; then
+    echo "ERRO: dotenv nao instalado."
+    exit 1
+fi
 
-const arquivo = process.argv[1];
+mkdir -p verificacao
+
+# ------------------------------------------------------------
+# LOCALIZAR BUILD INFO MAIS RECENTE
+# ------------------------------------------------------------
+
+ARQUIVO=$(
+    find artifacts/build-info \
+        -maxdepth 1 \
+        -type f \
+        -name '*.json' \
+        ! -name '*.output.json' \
+        -printf '%T@ %p\n' |
+    sort -nr |
+    head -n 1 |
+    cut -d' ' -f2-
+)
+
+if [[ -z "$ARQUIVO" ]]; then
+    echo "ERRO: arquivo de compilacao nao encontrado."
+    exit 1
+fi
+
+echo
+echo "Build selecionado: $ARQUIVO"
+echo
+
+# ------------------------------------------------------------
+# GERAR ARQUIVOS DE VERIFICACAO
+# ------------------------------------------------------------
+
+node - "$ARQUIVO" <<'NODE'
+const fs = require("fs");
+const path = require("path");
+
+const buildFile = process.argv[2];
 
 const build = JSON.parse(
-    fs.readFileSync(arquivo, "utf8")
+    fs.readFileSync(buildFile, "utf8")
 );
 
-if (!build.input) {
-    console.error("ERRO: campo input não encontrado.");
-    process.exit(1);
+const config = JSON.parse(
+    fs.readFileSync(".token-config.json", "utf8")
+);
+
+if (!build.input || !build.output) {
+    throw new Error("Build-info sem input ou output.");
 }
+
+if (!build.solcVersion || !build.solcLongVersion) {
+    throw new Error("Versao do compilador nao encontrada.");
+}
+
+const input = build.input;
+const settings = input.settings || {};
+const output = build.output;
+
+const solcVersion = build.solcVersion;
+const solcLongVersion = build.solcLongVersion;
+
+// ------------------------------------------------------------
+// INFORMACOES DO COMPILADOR
+// ------------------------------------------------------------
+
+const compiler = {
+    type: "Solidity (Standard-Json-Input)",
+    version: solcVersion,
+    longVersion: solcLongVersion
+};
+
+// ------------------------------------------------------------
+// INFORMACOES DE COMPILACAO
+// ------------------------------------------------------------
+
+const optimization = {
+    enabled: settings.optimizer?.enabled ?? false,
+    runs: settings.optimizer?.runs ?? null,
+    details: settings.optimizer?.details ?? null
+};
+
+const compilation = {
+    language: input.language || "Solidity",
+    evmVersion: settings.evmVersion || "Default",
+    viaIR: settings.viaIR ?? false,
+    libraries: settings.libraries || {},
+    metadata: settings.metadata || {},
+    remappings: settings.remappings || []
+};
+
+// ------------------------------------------------------------
+// IDENTIFICAR LICENCAS SPDX
+// ------------------------------------------------------------
+
+const licenses = new Set();
+
+for (const [sourceName, sourceData] of Object.entries(input.sources || {})) {
+    let content = sourceData.content || "";
+
+    if (!content) {
+        const possiblePath = path.resolve(sourceName);
+
+        if (fs.existsSync(possiblePath)) {
+            content = fs.readFileSync(possiblePath, "utf8");
+        }
+    }
+
+    const matches = content.matchAll(
+        /SPDX-License-Identifier:\s*([^\s*]+)/g
+    );
+
+    for (const match of matches) {
+        licenses.add(match[1]);
+    }
+}
+
+const licenseList = [...licenses];
+
+const licenseDisplay = licenseList.length
+    ? licenseList.join(", ")
+    : "Nao identificada";
+
+// ------------------------------------------------------------
+// IDENTIFICAR CONTRATOS COMPILADOS
+// ------------------------------------------------------------
+
+const contracts = [];
+
+for (const [sourceName, sourceContracts] of Object.entries(
+    output.contracts || {}
+)) {
+    for (const [contractName, contractData] of Object.entries(
+        sourceContracts
+    )) {
+        contracts.push({
+            source: sourceName,
+            name: contractName,
+            compiler: solcVersion,
+            abiAvailable: Array.isArray(contractData.abi),
+            creationBytecodeAvailable:
+                !!contractData.evm?.bytecode?.object,
+            deployedBytecodeAvailable:
+                !!contractData.evm?.deployedBytecode?.object
+        });
+    }
+}
+
+// ------------------------------------------------------------
+// IDENTIFICAR CONTRATO PRINCIPAL
+// ------------------------------------------------------------
+
+let mainContract = contracts.find(
+    item => item.name === "MeuToken"
+);
+
+if (!mainContract && contracts.length === 1) {
+    mainContract = contracts[0];
+}
+
+// ------------------------------------------------------------
+// INFORMACOES DA REDE E IMPLANTACAO
+// ------------------------------------------------------------
+
+const network = config.network || {};
+
+let deploymentInfo = null;
+
+const deploymentDirectory = path.join(
+    "deployments",
+    network.key || ""
+);
+
+if (fs.existsSync(deploymentDirectory)) {
+    const deploymentFiles = [];
+
+    function searchDeployments(dir) {
+        for (const item of fs.readdirSync(dir, {
+            withFileTypes: true
+        })) {
+            const fullPath = path.join(dir, item.name);
+
+            if (item.isDirectory()) {
+                searchDeployments(fullPath);
+            } else if (item.name === "deployment.json") {
+                deploymentFiles.push(fullPath);
+            }
+        }
+    }
+
+    searchDeployments(deploymentDirectory);
+
+    if (deploymentFiles.length) {
+        const file = deploymentFiles.sort().at(-1);
+
+        const d = JSON.parse(
+            fs.readFileSync(file, "utf8")
+        );
+
+        deploymentInfo = {
+            file,
+            contractAddress: d.contractAddress || null,
+            chainId: d.chainId || network.chainId || null,
+            name: d.name || null,
+            symbol: d.symbol || null,
+            decimals: d.decimals ?? null,
+            initialHolder: d.initialHolder || null,
+            tokenId: d.tokenId || null,
+            uniqueFingerprint: d.uniqueFingerprint || null,
+            deployer: d.deployer || null
+        };
+    }
+}
+
+// ------------------------------------------------------------
+// RELATORIO COMPLETO
+// ------------------------------------------------------------
+
+const report = {
+    generatedAt: new Date().toISOString(),
+
+    verification: {
+        compilerType: compiler.type,
+        compilerVersion: compiler.version,
+        compilerLongVersion: compiler.longVersion,
+        license: licenseDisplay,
+        licenseIdentifiers: licenseList,
+        contractAddress:
+            deploymentInfo?.contractAddress || null,
+        sourceFile: mainContract?.source || null,
+        contractName: mainContract?.name || null
+    },
+
+    compiler,
+    compilation,
+    optimization,
+
+    network: {
+        name: network.name || null,
+        key: network.key || null,
+        chainId: network.chainId || null,
+        nativeSymbol: network.nativeSymbol || null
+    },
+
+    deployment: deploymentInfo,
+
+    contracts,
+
+    buildInfo: {
+        file: buildFile,
+        solcVersion,
+        solcLongVersion
+    }
+};
+
+// ------------------------------------------------------------
+// SALVAR STANDARD INPUT JSON
+// ------------------------------------------------------------
 
 fs.writeFileSync(
     "verificacao/standard-input.json",
-    JSON.stringify(build.input, null, 2)
+    JSON.stringify(input, null, 2)
 );
 
-console.log("Arquivo de compilação:", arquivo);
-console.log("Arquivo criado: verificacao/standard-input.json");
-' "$ARQUIVO"
+// ------------------------------------------------------------
+// SALVAR RELATORIO JSON
+// ------------------------------------------------------------
+
+fs.writeFileSync(
+    "verificacao/dados-verificacao.json",
+    JSON.stringify(report, null, 2)
+);
+
+// ------------------------------------------------------------
+// GERAR RELATORIO DE TEXTO PARA PREENCHIMENTO
+// ------------------------------------------------------------
+
+const lines = [
+    "============================================================",
+    "       DADOS PARA VERIFICACAO DO CONTRATO EVM",
+    "============================================================",
+    "",
+    "1. CONTRACT ADDRESS",
+    deploymentInfo?.contractAddress || "NAO ENCONTRADO",
+    "",
+    "2. COMPILER TYPE",
+    compiler.type,
+    "",
+    "3. COMPILER VERSION",
+    solcVersion,
+    "",
+    "Compiler Long Version:",
+    solcLongVersion,
+    "",
+    "4. OPEN SOURCE LICENSE TYPE",
+    licenseDisplay,
+    "",
+    "5. LANGUAGE",
+    compilation.language,
+    "",
+    "6. CONTRACT NAME",
+    mainContract?.name || "NAO IDENTIFICADO",
+    "",
+    "7. SOURCE FILE",
+    mainContract?.source || "NAO IDENTIFICADO",
+    "",
+    "8. NETWORK",
+    network.name || "NAO IDENTIFICADA",
+    "",
+    "9. CHAIN ID",
+    network.chainId || "NAO IDENTIFICADO",
+    "",
+    "10. OPTIMIZER",
+    `Enabled: ${optimization.enabled}`,
+    `Runs: ${optimization.runs ?? "N/A"}`,
+    "",
+    "11. VIA IR",
+    String(compilation.viaIR),
+    "",
+    "12. EVM VERSION",
+    compilation.evmVersion,
+    "",
+    "13. STANDARD INPUT JSON",
+    "verificacao/standard-input.json",
+    "",
+    "14. BUILD INFO",
+    buildFile,
+    "",
+    "============================================================",
+    "ARQUIVOS GERADOS:",
+    "verificacao/standard-input.json",
+    "verificacao/dados-verificacao.txt",
+    "verificacao/dados-verificacao.json",
+    "============================================================",
+    ""
+];
+
+fs.writeFileSync(
+    "verificacao/dados-verificacao.txt",
+    lines.join("\n")
+);
+
+// ------------------------------------------------------------
+// EXIBIR RESULTADO
+// ------------------------------------------------------------
+
+console.log("\n============================================================");
+console.log("       DADOS PARA PREENCHER NO EXPLORADOR");
+console.log("============================================================");
+
+console.log("\nCompiler Type:", compiler.type);
+console.log("Compiler Version:", solcVersion);
+console.log("Long Version:", solcLongVersion);
+console.log("License:", licenseDisplay);
+
+console.log(
+    "Contract Address:",
+    deploymentInfo?.contractAddress || "NAO ENCONTRADO"
+);
+
+console.log(
+    "Contract Name:",
+    mainContract?.name || "NAO IDENTIFICADO"
+);
+
+console.log(
+    "Source File:",
+    mainContract?.source || "NAO IDENTIFICADO"
+);
+
+console.log("Optimizer:", optimization.enabled);
+console.log("Optimizer Runs:", optimization.runs);
+console.log("Via IR:", compilation.viaIR);
+console.log("EVM Version:", compilation.evmVersion);
+
+console.log("\nContratos encontrados:");
+
+for (const contract of contracts) {
+    console.log(
+        `- ${contract.name} (${contract.source})`
+    );
+}
+
+console.log("\nArquivos gerados com sucesso.");
+
+if (licenseList.length !== 1) {
+    console.log(
+        "\nATENCAO: confira os identificadores SPDX antes de selecionar a licenca."
+    );
+}
+
+if (!deploymentInfo?.contractAddress) {
+    console.log(
+        "\nATENCAO: endereco do contrato nao encontrado no deployment.json."
+    );
+}
+
+if (!mainContract) {
+    console.log(
+        "\nATENCAO: confira o contrato principal compilado."
+    );
+}
+
+NODE
 
 echo
 echo "============================================================"
-echo "       STANDARD-INPUT JSON GERADO COM SUCESSO"
+echo "       PROCESSO FINALIZADO"
 echo "============================================================"
 echo
-echo "Arquivo: verificacao/standard-input.json"
+echo "Consulte os arquivos dentro de verificacao/"
 echo
-AUTENTICAR_EOF
+SCRIPT_EOF
 
 chmod +x contractautenticar.sh
-
-echo "Arquivo contractautenticar.sh criado com sucesso."
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ============================================================
