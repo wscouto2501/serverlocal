@@ -158,6 +158,23 @@ TOKEN_NAME="${TOKEN_NAME:-RealUnit}"
 read -r -p "Símbolo/ticker [RUT]: " TOKEN_SYMBOL
 TOKEN_SYMBOL="${TOKEN_SYMBOL:-RUT}"
 
+
+
+
+# Nome técnico exclusivo do contrato Solidity
+TOKEN_CONTRACT_NAME="${TOKEN_SYMBOL}Token"
+
+# Garante que o identificador Solidity comece com letra
+if [[ "$TOKEN_CONTRACT_NAME" =~ ^[0-9] ]]; then
+    TOKEN_CONTRACT_NAME="Token${TOKEN_CONTRACT_NAME}"
+fi
+
+
+
+
+
+
+
 read -r -p "Quantidade inicial de tokens [10000000]: " INITIAL_SUPPLY
 INITIAL_SUPPLY="${INITIAL_SUPPLY:-10000000}"
 
@@ -517,16 +534,6 @@ contract TokenFactory {
 EOF
 
 
-
-
-
-
-
-
-
-
-
-
 # ============================================================
 # HARDHAT
 # ============================================================
@@ -750,18 +757,6 @@ async function main() {
     
     console.log("Token implantado:", address);
     console.log("Transação:", tx.hash);
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     const explorerBase = String(selected.explorer || "")
@@ -1448,12 +1443,6 @@ if ! npm audit --omit=dev; then
     echo "AVISO: npm audit encontrou vulnerabilidades."
     echo "O projeto foi compilado e testado, mas revise os avisos."
 fi
-
-
-
-
-
-
 
 
 cat > revogar.sh <<'REVOGAR_EOF'
@@ -2617,6 +2606,27 @@ EOF
 chmod +x readme.sh
 
 # ============================================================
+# PERSONALIZAR NOME DO CONTRATO E ARQUIVOS
+# ============================================================
+
+# Substitui todas as referências internas MeuToken
+# pelo nome técnico gerado a partir do símbolo.
+
+find . -type f \
+    \( -name '*.sol' -o -name '*.js' -o -name '*.sh' \) \
+    -not -path './node_modules/*' \
+    -not -path './artifacts/*' \
+    -exec sed -i "s/MeuToken/${TOKEN_CONTRACT_NAME}/g" {} +
+
+# Renomeia os arquivos principais
+mv contracts/MeuToken.sol \
+   "contracts/${TOKEN_CONTRACT_NAME}.sol"
+
+mv test/MeuToken.js \
+   "test/${TOKEN_CONTRACT_NAME}.js"
+
+
+# ============================================================
 # FINALIZAÇÃO
 # ============================================================
 
@@ -2630,9 +2640,9 @@ echo "Mint: $([[ "$MINT_ENABLED" == "true" ]] && echo "Habilitado" || echo "Desa
 echo "Burn: $([[ "$BURN_ENABLED" == "true" ]] && echo "Habilitado" || echo "Desabilitado")"
 echo
 echo "Arquivos principais:"
-echo "  contracts/MeuToken.sol"
+echo "  contracts/${TOKEN_CONTRACT_NAME}.sol"
 echo "  scripts/deploy.js"
-echo "  test/MeuToken.js"
+echo "  test/${TOKEN_CONTRACT_NAME}.js"
 echo "  validar_moeda.sh"
 echo "  verificar_carteira.sh"
 echo "  readme.sh"
