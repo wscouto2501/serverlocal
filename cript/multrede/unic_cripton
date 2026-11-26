@@ -386,7 +386,7 @@ EOF
 
 cat > contracts/MeuToken.sol <<'EOF'
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.39;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -558,7 +558,7 @@ if (!process.env.RPC_URL) {
 
 module.exports = {
     solidity: {
-        version: "0.8.20",
+        version: "0.8.39",
         settings: {
             optimizer: {
                 enabled: true,
