@@ -1449,6 +1449,324 @@ if ! npm audit --omit=dev; then
     echo "O projeto foi compilado e testado, mas revise os avisos."
 fi
 
+
+
+
+
+
+
+cat > revogar.sh <<'REVOGAR_EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# ============================================================
+# REVOGAR PROPRIEDADE DO TOKEN ERC-20
+# Compatível com o contrato MeuToken / OpenZeppelin Ownable 5
+# EVM: Polygon, Base, BNB Chain, Ethereum etc.
+# ============================================================
+
+if [[ "${EUID}" -ne 0 ]]; then
+    echo "Execute como root: sudo bash revogar.sh"
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+if [[ ! -f ".env" || ! -f ".token-config.json" ]]; then
+    echo "ERRO: arquivos .env ou .token-config.json não encontrados."
+    exit 1
+fi
+
+if [[ ! -d "node_modules/ethers" ]]; then
+    echo "ERRO: ethers não instalado neste projeto."
+    exit 1
+fi
+
+if [[ ! -d "node_modules/dotenv" ]]; then
+    echo "ERRO: dotenv não instalado neste projeto."
+    exit 1
+fi
+
+echo
+echo "============================================================"
+echo "             REVOGAÇÃO DA PROPRIEDADE"
+echo "============================================================"
+echo
+echo "ATENÇÃO: esta operação é IRREVERSÍVEL."
+echo "Após a execução, nenhuma carteira poderá recuperar"
+echo "a propriedade administrativa do contrato."
+echo
+
+node <<'NODE'
+require("dotenv").config();
+
+const fs = require("fs");
+const readline = require("readline");
+const {
+    ethers,
+    JsonRpcProvider,
+    Wallet,
+    Contract,
+    ZeroAddress
+} = require("ethers");
+
+async function perguntar(pergunta) {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+
+    return new Promise(resolve => {
+        rl.question(pergunta, resposta => {
+            rl.close();
+            resolve(resposta.trim());
+        });
+    });
+}
+
+async function main() {
+    if (!process.env.RPC_URL || !process.env.PRIVATE_KEY) {
+        throw new Error("Configure RPC_URL e PRIVATE_KEY no .env.");
+    }
+
+    const config = JSON.parse(
+        fs.readFileSync(".token-config.json", "utf8")
+    );
+
+    if (!config.network || !config.network.chainId) {
+        throw new Error("Configuração da rede inválida.");
+    }
+
+    const provider = new JsonRpcProvider(process.env.RPC_URL);
+
+    const network = await provider.getNetwork();
+    const expectedChainId = BigInt(config.network.chainId);
+
+    if (network.chainId !== expectedChainId) {
+        throw new Error(
+            `Rede incorreta. Conectada: ${network.chainId}. ` +
+            `Esperada: ${expectedChainId}.`
+        );
+    }
+
+    const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
+
+    let defaultAddress = "";
+
+    const deploymentFile =
+        `deployments/${config.network.key}/deployment.json`;
+
+    if (fs.existsSync(deploymentFile)) {
+        const deployment = JSON.parse(
+            fs.readFileSync(deploymentFile, "utf8")
+        );
+
+        if (BigInt(deployment.chainId) !== expectedChainId) {
+            throw new Error("Chain ID do registro de implantação divergente.");
+        }
+
+        defaultAddress = deployment.contractAddress || "";
+    }
+
+    console.log("Rede:", config.network.name);
+    console.log("Chain ID:", network.chainId.toString());
+    console.log("Carteira conectada:", wallet.address);
+
+    const balance = await provider.getBalance(wallet.address);
+
+    console.log(
+        `Saldo ${config.network.nativeSymbol}:`,
+        ethers.formatEther(balance)
+    );
+
+    console.log();
+
+    const inputAddress = await perguntar(
+        `Endereço do contrato${defaultAddress ? ` [${defaultAddress}]` : ""}: `
+    );
+
+    const tokenAddress = ethers.getAddress(
+        inputAddress || defaultAddress
+    );
+
+    if (!ethers.isAddress(tokenAddress)) {
+        throw new Error("Endereço do contrato inválido.");
+    }
+
+    const code = await provider.getCode(tokenAddress);
+
+    if (code === "0x") {
+        throw new Error("Nenhum contrato encontrado neste endereço.");
+    }
+
+    const abi = [
+        "function name() view returns (string)",
+        "function symbol() view returns (string)",
+        "function owner() view returns (address)",
+        "function renounceOwnership()",
+        "function totalSupply() view returns (uint256)",
+        "function decimals() view returns (uint8)"
+    ];
+
+    const token = new Contract(tokenAddress, abi, wallet);
+
+    const name = await token.name();
+    const symbol = await token.symbol();
+    const owner = await token.owner();
+    const decimals = await token.decimals();
+    const supply = await token.totalSupply();
+
+    console.log();
+    console.log("============================================================");
+    console.log("                 DADOS DO CONTRATO");
+    console.log("============================================================");
+    console.log("Nome:", name);
+    console.log("Símbolo:", symbol);
+    console.log("Contrato:", tokenAddress);
+    console.log("Proprietário atual:", owner);
+    console.log("Carteira conectada:", wallet.address);
+    console.log(
+        "Supply:",
+        ethers.formatUnits(supply, decimals),
+        symbol
+    );
+    console.log("============================================================");
+
+    if (owner === ZeroAddress) {
+        throw new Error("A propriedade já foi revogada anteriormente.");
+    }
+
+    if (owner.toLowerCase() !== wallet.address.toLowerCase()) {
+        throw new Error(
+            "A carteira conectada não é a proprietária do contrato. " +
+            "Operação cancelada."
+        );
+    }
+
+    if (balance === 0n) {
+        throw new Error("Saldo insuficiente para pagar o gas.");
+    }
+
+    console.log();
+    console.log("A carteira conectada é a proprietária.");
+    console.log();
+    console.log("A operação executará:");
+    console.log("renounceOwnership()");
+    console.log();
+    console.log("Após a confirmação:");
+    console.log("- owner() será o endereço zero.");
+    console.log("- A propriedade não poderá ser recuperada.");
+    console.log("- Funções exclusivas do proprietário ficarão inacessíveis.");
+    console.log();
+
+    const confirmation = await perguntar(
+        "Digite REVOGAR para confirmar definitivamente: "
+    );
+
+    if (confirmation !== "REVOGAR") {
+        console.log("Operação cancelada. Nenhuma transação executada.");
+        return;
+    }
+
+    console.log();
+    console.log("Simulando operação...");
+
+    await token.renounceOwnership.staticCall();
+
+    const gasEstimate = await token.renounceOwnership.estimateGas();
+
+    const feeData = await provider.getFeeData();
+
+    const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
+
+    if (!gasPrice) {
+        throw new Error("Não foi possível obter a taxa de gas.");
+    }
+
+    const estimatedCost = gasEstimate * gasPrice;
+
+    if (balance < estimatedCost) {
+        throw new Error("Saldo insuficiente para a transação estimada.");
+    }
+
+    console.log("Simulação concluída.");
+    console.log("Gas estimado:", gasEstimate.toString());
+    console.log(
+        "Custo estimado:",
+        ethers.formatEther(estimatedCost),
+        config.network.nativeSymbol
+    );
+
+    console.log();
+    console.log("Enviando transação para a blockchain...");
+
+    const tx = await token.renounceOwnership({
+        gasLimit: gasEstimate
+    });
+
+    console.log("Hash:", tx.hash);
+    console.log("Aguardando confirmação...");
+
+    const receipt = await tx.wait();
+
+    if (!receipt || receipt.status !== 1) {
+        throw new Error("A transação não foi confirmada com sucesso.");
+    }
+
+    const newOwner = await token.owner();
+
+    if (newOwner !== ZeroAddress) {
+        throw new Error(
+            "ATENÇÃO: a propriedade não foi revogada conforme esperado."
+        );
+    }
+
+    console.log();
+    console.log("============================================================");
+    console.log("           PROPRIEDADE REVOGADA COM SUCESSO");
+    console.log("============================================================");
+    console.log("Token:", name, `(${symbol})`);
+    console.log("Contrato:", tokenAddress);
+    console.log("Rede:", config.network.name);
+    console.log("Antigo proprietário:", owner);
+    console.log("Novo proprietário:", newOwner);
+    console.log("Transação:", tx.hash);
+    console.log("Bloco:", receipt.blockNumber);
+    console.log("Status: CONFIRMADO");
+    console.log("============================================================");
+    console.log();
+    console.log("A propriedade foi renunciada definitivamente.");
+    console.log("Os tokens e as transferências continuam funcionando.");
+}
+
+main().catch(error => {
+    console.error();
+    console.error("[ERRO]", error.shortMessage || error.message);
+    process.exitCode = 1;
+});
+NODE
+REVOGAR_EOF
+
+chmod +x revogar.sh
+
+echo "Arquivo revogar.sh criado com sucesso!"
+echo "Permissão de execução aplicada."
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # ============================================================
 # README
 # ============================================================
