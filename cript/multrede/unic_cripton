@@ -1455,14 +1455,15 @@ fi
 
 
 
+
 cat > revogar.sh <<'REVOGAR_EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
 # ============================================================
 # REVOGAR PROPRIEDADE DO TOKEN ERC-20
-# Compatível com o contrato MeuToken / OpenZeppelin Ownable 5
-# EVM: Polygon, Base, BNB Chain, Ethereum etc.
+# OpenZeppelin Ownable 5
+# Polygon, Base, BNB Chain, Ethereum e outras EVM
 # ============================================================
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -1473,18 +1474,29 @@ fi
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-if [[ ! -f ".env" || ! -f ".token-config.json" ]]; then
-    echo "ERRO: arquivos .env ou .token-config.json não encontrados."
-    exit 1
-fi
+# ============================================================
+# VALIDACOES INICIAIS
+# ============================================================
+
+for FILE in ".env" ".token-config.json"; do
+    if [[ ! -f "$FILE" ]]; then
+        echo "ERRO: arquivo $FILE não encontrado."
+        exit 1
+    fi
+done
 
 if [[ ! -d "node_modules/ethers" ]]; then
-    echo "ERRO: ethers não instalado neste projeto."
+    echo "ERRO: ethers não instalado."
     exit 1
 fi
 
 if [[ ! -d "node_modules/dotenv" ]]; then
-    echo "ERRO: dotenv não instalado neste projeto."
+    echo "ERRO: dotenv não instalado."
+    exit 1
+fi
+
+if [[ ! -r /dev/tty ]]; then
+    echo "ERRO: terminal interativo não disponível."
     exit 1
 fi
 
@@ -1493,10 +1505,20 @@ echo "============================================================"
 echo "             REVOGAÇÃO DA PROPRIEDADE"
 echo "============================================================"
 echo
-echo "ATENÇÃO: esta operação é IRREVERSÍVEL."
-echo "Após a execução, nenhuma carteira poderá recuperar"
-echo "a propriedade administrativa do contrato."
+echo "ATENÇÃO: ESTA OPERACAO E IRREVERSIVEL."
 echo
+echo "Apos a revogacao:"
+echo "- O contrato ficara sem proprietario."
+echo "- Nenhuma carteira podera recuperar a propriedade."
+echo "- Funcoes exclusivas do proprietario ficarao inacessiveis."
+echo "- Transferencias de tokens continuarao funcionando."
+echo
+echo "============================================================"
+echo
+
+# ============================================================
+# EXECUCAO NODE.JS
+# ============================================================
 
 node <<'NODE'
 require("dotenv").config();
@@ -1511,36 +1533,65 @@ const {
     ZeroAddress
 } = require("ethers");
 
-async function perguntar(pergunta) {
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
+// ============================================================
+// TERMINAL INTERATIVO
+// ============================================================
 
+const terminal = fs.createReadStream("/dev/tty");
+
+const rl = readline.createInterface({
+    input: terminal,
+    output: process.stdout
+});
+
+async function perguntar(pergunta) {
     return new Promise(resolve => {
         rl.question(pergunta, resposta => {
-            rl.close();
             resolve(resposta.trim());
         });
     });
 }
 
+// ============================================================
+// PROCESSO PRINCIPAL
+// ============================================================
+
 async function main() {
+
+    // --------------------------------------------------------
+    // VALIDAR CREDENCIAIS
+    // --------------------------------------------------------
+
     if (!process.env.RPC_URL || !process.env.PRIVATE_KEY) {
-        throw new Error("Configure RPC_URL e PRIVATE_KEY no .env.");
+        throw new Error(
+            "Configure RPC_URL e PRIVATE_KEY no arquivo .env."
+        );
     }
+
+    // --------------------------------------------------------
+    // LER CONFIGURACAO
+    // --------------------------------------------------------
 
     const config = JSON.parse(
         fs.readFileSync(".token-config.json", "utf8")
     );
 
     if (!config.network || !config.network.chainId) {
-        throw new Error("Configuração da rede inválida.");
+        throw new Error("Configuracao da rede invalida.");
     }
+
+    if (!config.network.key) {
+        throw new Error("Identificador da rede nao encontrado.");
+    }
+
+    // --------------------------------------------------------
+    // CONECTAR A BLOCKCHAIN
+    // --------------------------------------------------------
 
     const provider = new JsonRpcProvider(process.env.RPC_URL);
 
     const network = await provider.getNetwork();
+
     const expectedChainId = BigInt(config.network.chainId);
 
     if (network.chainId !== expectedChainId) {
@@ -1550,7 +1601,25 @@ async function main() {
         );
     }
 
-    const wallet = new Wallet(process.env.PRIVATE_KEY, provider);
+    const wallet = new Wallet(
+        process.env.PRIVATE_KEY,
+        provider
+    );
+
+    const balance = await provider.getBalance(wallet.address);
+
+    console.log("Rede:", config.network.name);
+    console.log("Chain ID:", network.chainId.toString());
+    console.log("Carteira conectada:", wallet.address);
+
+    console.log(
+        `Saldo ${config.network.nativeSymbol}:`,
+        ethers.formatEther(balance)
+    );
+
+    // --------------------------------------------------------
+    // LOCALIZAR CONTRATO
+    // --------------------------------------------------------
 
     let defaultAddress = "";
 
@@ -1558,47 +1627,49 @@ async function main() {
         `deployments/${config.network.key}/deployment.json`;
 
     if (fs.existsSync(deploymentFile)) {
+
         const deployment = JSON.parse(
             fs.readFileSync(deploymentFile, "utf8")
         );
 
         if (BigInt(deployment.chainId) !== expectedChainId) {
-            throw new Error("Chain ID do registro de implantação divergente.");
+            throw new Error(
+                "Chain ID do registro de implantacao divergente."
+            );
         }
 
         defaultAddress = deployment.contractAddress || "";
     }
 
-    console.log("Rede:", config.network.name);
-    console.log("Chain ID:", network.chainId.toString());
-    console.log("Carteira conectada:", wallet.address);
-
-    const balance = await provider.getBalance(wallet.address);
-
-    console.log(
-        `Saldo ${config.network.nativeSymbol}:`,
-        ethers.formatEther(balance)
-    );
-
     console.log();
 
     const inputAddress = await perguntar(
-        `Endereço do contrato${defaultAddress ? ` [${defaultAddress}]` : ""}: `
+        `Endereco do contrato${defaultAddress ? ` [${defaultAddress}]` : ""}: `
     );
 
-    const tokenAddress = ethers.getAddress(
-        inputAddress || defaultAddress
-    );
+    const selectedAddress = inputAddress || defaultAddress;
 
-    if (!ethers.isAddress(tokenAddress)) {
-        throw new Error("Endereço do contrato inválido.");
+    if (!ethers.isAddress(selectedAddress)) {
+        throw new Error("Endereco do contrato invalido.");
     }
+
+    const tokenAddress = ethers.getAddress(selectedAddress);
+
+    // --------------------------------------------------------
+    // VERIFICAR CONTRATO
+    // --------------------------------------------------------
 
     const code = await provider.getCode(tokenAddress);
 
     if (code === "0x") {
-        throw new Error("Nenhum contrato encontrado neste endereço.");
+        throw new Error(
+            "Nenhum contrato encontrado neste endereco e nesta rede."
+        );
     }
+
+    // --------------------------------------------------------
+    // ABI ERC20 + OWNABLE
+    // --------------------------------------------------------
 
     const abi = [
         "function name() view returns (string)",
@@ -1609,7 +1680,15 @@ async function main() {
         "function decimals() view returns (uint8)"
     ];
 
-    const token = new Contract(tokenAddress, abi, wallet);
+    const token = new Contract(
+        tokenAddress,
+        abi,
+        wallet
+    );
+
+    // --------------------------------------------------------
+    // CONSULTAR DADOS DO TOKEN
+    // --------------------------------------------------------
 
     const name = await token.name();
     const symbol = await token.symbol();
@@ -1621,130 +1700,219 @@ async function main() {
     console.log("============================================================");
     console.log("                 DADOS DO CONTRATO");
     console.log("============================================================");
+
     console.log("Nome:", name);
-    console.log("Símbolo:", symbol);
+    console.log("Simbolo:", symbol);
     console.log("Contrato:", tokenAddress);
-    console.log("Proprietário atual:", owner);
+    console.log("Proprietario atual:", owner);
     console.log("Carteira conectada:", wallet.address);
+
     console.log(
         "Supply:",
         ethers.formatUnits(supply, decimals),
         symbol
     );
+
     console.log("============================================================");
 
-    if (owner === ZeroAddress) {
-        throw new Error("A propriedade já foi revogada anteriormente.");
-    }
+    // --------------------------------------------------------
+    // VERIFICAR PROPRIEDADE
+    // --------------------------------------------------------
 
-    if (owner.toLowerCase() !== wallet.address.toLowerCase()) {
+    if (owner === ZeroAddress) {
         throw new Error(
-            "A carteira conectada não é a proprietária do contrato. " +
-            "Operação cancelada."
+            "A propriedade ja foi revogada anteriormente."
         );
     }
 
+    if (
+        owner.toLowerCase() !==
+        wallet.address.toLowerCase()
+    ) {
+        throw new Error(
+            "A carteira conectada nao e proprietaria do contrato. " +
+            "Operacao cancelada."
+        );
+    }
+
+    // --------------------------------------------------------
+    // VERIFICAR SALDO
+    // --------------------------------------------------------
+
     if (balance === 0n) {
-        throw new Error("Saldo insuficiente para pagar o gas.");
+        throw new Error(
+            "Saldo insuficiente para pagar o gas."
+        );
     }
 
     console.log();
-    console.log("A carteira conectada é a proprietária.");
+    console.log("A carteira conectada e a proprietaria.");
     console.log();
-    console.log("A operação executará:");
+    console.log("A operacao executara:");
     console.log("renounceOwnership()");
     console.log();
-    console.log("Após a confirmação:");
-    console.log("- owner() será o endereço zero.");
-    console.log("- A propriedade não poderá ser recuperada.");
-    console.log("- Funções exclusivas do proprietário ficarão inacessíveis.");
+    console.log("ATENCAO:");
+    console.log("- A propriedade sera perdida definitivamente.");
+    console.log("- O endereco owner() sera zerado.");
+    console.log("- Funcoes onlyOwner nao poderao mais ser executadas.");
     console.log();
+
+    // --------------------------------------------------------
+    // CONFIRMACAO MANUAL
+    // --------------------------------------------------------
 
     const confirmation = await perguntar(
         "Digite REVOGAR para confirmar definitivamente: "
     );
 
     if (confirmation !== "REVOGAR") {
-        console.log("Operação cancelada. Nenhuma transação executada.");
+        console.log();
+        console.log("Operacao cancelada.");
+        console.log("Nenhuma transacao foi enviada.");
         return;
     }
 
+    // --------------------------------------------------------
+    // SIMULAR OPERACAO
+    // --------------------------------------------------------
+
     console.log();
-    console.log("Simulando operação...");
+    console.log("Simulando operacao...");
 
     await token.renounceOwnership.staticCall();
 
-    const gasEstimate = await token.renounceOwnership.estimateGas();
+    console.log("Simulacao concluida.");
+
+    // --------------------------------------------------------
+    // ESTIMAR GAS
+    // --------------------------------------------------------
+
+    const gasEstimate =
+        await token.renounceOwnership.estimateGas();
 
     const feeData = await provider.getFeeData();
 
-    const gasPrice = feeData.maxFeePerGas || feeData.gasPrice;
+    const gasPrice =
+        feeData.maxFeePerGas || feeData.gasPrice;
 
     if (!gasPrice) {
-        throw new Error("Não foi possível obter a taxa de gas.");
+        throw new Error(
+            "Nao foi possivel obter a taxa de gas."
+        );
     }
 
     const estimatedCost = gasEstimate * gasPrice;
 
     if (balance < estimatedCost) {
-        throw new Error("Saldo insuficiente para a transação estimada.");
+        throw new Error(
+            "Saldo insuficiente para pagar o gas estimado."
+        );
     }
 
-    console.log("Simulação concluída.");
+    console.log();
     console.log("Gas estimado:", gasEstimate.toString());
+
     console.log(
         "Custo estimado:",
         ethers.formatEther(estimatedCost),
         config.network.nativeSymbol
     );
 
+    // --------------------------------------------------------
+    // CONFIRMACAO FINAL
+    // --------------------------------------------------------
+
+    const finalConfirmation = await perguntar(
+        "Confirma o envio da transacao? Digite SIM: "
+    );
+
+    if (finalConfirmation !== "SIM") {
+        console.log();
+        console.log("Operacao cancelada.");
+        return;
+    }
+
+    // --------------------------------------------------------
+    // ENVIAR TRANSACAO
+    // --------------------------------------------------------
+
     console.log();
-    console.log("Enviando transação para a blockchain...");
+    console.log("Enviando transacao para a blockchain...");
 
     const tx = await token.renounceOwnership({
         gasLimit: gasEstimate
     });
 
-    console.log("Hash:", tx.hash);
-    console.log("Aguardando confirmação...");
+    console.log();
+    console.log("Hash da transacao:", tx.hash);
+    console.log("Aguardando confirmacao...");
 
     const receipt = await tx.wait();
 
     if (!receipt || receipt.status !== 1) {
-        throw new Error("A transação não foi confirmada com sucesso.");
-    }
-
-    const newOwner = await token.owner();
-
-    if (newOwner !== ZeroAddress) {
         throw new Error(
-            "ATENÇÃO: a propriedade não foi revogada conforme esperado."
+            "A transacao nao foi confirmada com sucesso."
         );
     }
 
+    // --------------------------------------------------------
+    // VERIFICAR RESULTADO NA BLOCKCHAIN
+    // --------------------------------------------------------
+
+    const newOwner = await token.owner();
+
+    if (
+        newOwner.toLowerCase() !==
+        ZeroAddress.toLowerCase()
+    ) {
+        throw new Error(
+            "A propriedade nao foi revogada conforme esperado."
+        );
+    }
+
+    // --------------------------------------------------------
+    // RESULTADO FINAL
+    // --------------------------------------------------------
+
     console.log();
     console.log("============================================================");
-    console.log("           PROPRIEDADE REVOGADA COM SUCESSO");
+    console.log("       PROPRIEDADE REVOGADA COM SUCESSO");
     console.log("============================================================");
+
     console.log("Token:", name, `(${symbol})`);
     console.log("Contrato:", tokenAddress);
     console.log("Rede:", config.network.name);
-    console.log("Antigo proprietário:", owner);
-    console.log("Novo proprietário:", newOwner);
-    console.log("Transação:", tx.hash);
+    console.log("Antigo proprietario:", owner);
+    console.log("Novo proprietario:", newOwner);
+    console.log("Transacao:", tx.hash);
     console.log("Bloco:", receipt.blockNumber);
     console.log("Status: CONFIRMADO");
+
     console.log("============================================================");
+
     console.log();
     console.log("A propriedade foi renunciada definitivamente.");
-    console.log("Os tokens e as transferências continuam funcionando.");
+    console.log("Os tokens e as transferencias continuam funcionando.");
 }
 
-main().catch(error => {
-    console.error();
-    console.error("[ERRO]", error.shortMessage || error.message);
-    process.exitCode = 1;
-});
+// ============================================================
+// EXECUTAR E FECHAR TERMINAL
+// ============================================================
+
+main()
+    .catch(error => {
+        console.error();
+        console.error(
+            "[ERRO]",
+            error.shortMessage || error.message
+        );
+        process.exitCode = 1;
+    })
+    .finally(() => {
+        rl.close();
+        terminal.destroy();
+    });
+
 NODE
 REVOGAR_EOF
 
@@ -1752,6 +1920,236 @@ chmod +x revogar.sh
 
 echo "Arquivo revogar.sh criado com sucesso!"
 echo "Permissão de execução aplicada."
+
+
+cat > abiencode.sh <<'ABI_EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# ============================================================
+# GERAR CONSTRUCTOR ARGUMENTS ABI-ENCODED
+# ERC-20 MeuToken - OpenZeppelin Ownable 5
+# Polygon, Base, BNB Chain, Ethereum e outras EVM
+# ============================================================
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+# ============================================================
+# VALIDACOES
+# ============================================================
+
+if [[ ! -f ".token-config.json" ]]; then
+    echo "ERRO: arquivo .token-config.json não encontrado."
+    exit 1
+fi
+
+if [[ ! -d "node_modules/ethers" ]]; then
+    echo "ERRO: ethers não instalado."
+    exit 1
+fi
+
+if [[ ! -d "deployments" ]]; then
+    echo "ERRO: diretório deployments não encontrado."
+    exit 1
+fi
+
+DEPLOY=$(find deployments -type f -name deployment.json | sort | head -n 1)
+
+if [[ -z "$DEPLOY" ]]; then
+    echo "ERRO: arquivo deployment.json não encontrado."
+    exit 1
+fi
+
+echo
+echo "============================================================"
+echo "       GERAR CONSTRUCTOR ARGUMENTS ABI-ENCODED"
+echo "============================================================"
+echo
+echo "Registro de implantação: $DEPLOY"
+echo
+
+# ============================================================
+# CODIFICACAO ABI
+# ============================================================
+
+node - "$DEPLOY" <<'NODE'
+const fs = require("fs");
+const { ethers } = require("ethers");
+
+async function main() {
+
+    const deploymentFile = process.argv[2];
+
+    const d = JSON.parse(
+        fs.readFileSync(deploymentFile, "utf8")
+    );
+
+    const c = JSON.parse(
+        fs.readFileSync(".token-config.json", "utf8")
+    );
+
+    const required = [
+        "name",
+        "symbol",
+        "decimals",
+        "initialHolder",
+        "tokenId",
+        "uniqueFingerprint",
+        "deployer"
+    ];
+
+    for (const field of required) {
+        if (d[field] === undefined || d[field] === null || d[field] === "") {
+            throw new Error(
+                `Campo ${field} ausente no deployment.json.`
+            );
+        }
+    }
+
+    if (
+        c.initialSupply === undefined ||
+        c.initialSupply === null ||
+        c.initialSupply === ""
+    ) {
+        throw new Error(
+            "Campo initialSupply ausente no .token-config.json."
+        );
+    }
+
+    const encoded = ethers.AbiCoder.defaultAbiCoder().encode(
+        [
+            "string",
+            "string",
+            "uint256",
+            "uint8",
+            "address",
+            "bytes32",
+            "bytes32",
+            "address"
+        ],
+        [
+            d.name,
+            d.symbol,
+            BigInt(c.initialSupply),
+            d.decimals,
+            d.initialHolder,
+            d.tokenId,
+            d.uniqueFingerprint,
+            d.deployer
+        ]
+    );
+
+    console.log("Nome:", d.name);
+    console.log("Símbolo:", d.symbol);
+    console.log("Decimals:", d.decimals);
+    console.log("Carteira inicial:", d.initialHolder);
+    console.log("Token ID:", d.tokenId);
+    console.log("Fingerprint:", d.uniqueFingerprint);
+    console.log("Proprietário inicial:", d.deployer);
+
+    console.log("\nCONSTRUCTOR ARGUMENTS:");
+    console.log(encoded);
+
+    // Salvar resultado em arquivo
+    fs.mkdirSync("verificacao", { recursive: true });
+
+    fs.writeFileSync(
+        "verificacao/constructor-arguments.txt",
+        encoded + "\n"
+    );
+
+    console.log(
+        "\nArquivo criado: verificacao/constructor-arguments.txt"
+    );
+}
+
+main().catch(error => {
+    console.error("\n[ERRO]", error.message);
+    process.exitCode = 1;
+});
+NODE
+
+echo
+echo "============================================================"
+echo "       CODIFICACAO CONCLUIDA"
+echo "============================================================"
+ABI_EOF
+
+chmod +x abiencode.sh
+
+echo "Arquivo abiencode.sh criado com sucesso."
+
+cat > contractautenticar.sh <<'AUTENTICAR_EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# ============================================================
+# GERAR STANDARD-INPUT JSON PARA VERIFICACAO DO CONTRATO
+# Hardhat - Solidity Standard JSON Input
+# ============================================================
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+mkdir -p verificacao
+
+ARQUIVO=$(find artifacts/build-info \
+    -maxdepth 1 \
+    -type f \
+    -name '*.json' \
+    ! -name '*.output.json' \
+    | head -n 1)
+
+if [[ -z "$ARQUIVO" ]]; then
+    echo "ERRO: arquivo de compilação não encontrado."
+    echo "Verifique se o contrato foi compilado pelo Hardhat."
+    exit 1
+fi
+
+node -e '
+const fs = require("fs");
+
+const arquivo = process.argv[1];
+
+const build = JSON.parse(
+    fs.readFileSync(arquivo, "utf8")
+);
+
+if (!build.input) {
+    console.error("ERRO: campo input não encontrado.");
+    process.exit(1);
+}
+
+fs.writeFileSync(
+    "verificacao/standard-input.json",
+    JSON.stringify(build.input, null, 2)
+);
+
+console.log("Arquivo de compilação:", arquivo);
+console.log("Arquivo criado: verificacao/standard-input.json");
+' "$ARQUIVO"
+
+echo
+echo "============================================================"
+echo "       STANDARD-INPUT JSON GERADO COM SUCESSO"
+echo "============================================================"
+echo
+echo "Arquivo: verificacao/standard-input.json"
+echo
+AUTENTICAR_EOF
+
+chmod +x contractautenticar.sh
+
+echo "Arquivo contractautenticar.sh criado com sucesso."
+
+
+
+
+
+
+
+
 
 
 
