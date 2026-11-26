@@ -152,24 +152,24 @@ echo "=================================================="
 echo "       CONFIGURAÇÃO DA SUA CRIPTOMOEDA"
 echo "=================================================="
 
+
+
 read -r -p "Nome da moeda [RealUnit]: " TOKEN_NAME
 TOKEN_NAME="${TOKEN_NAME:-RealUnit}"
 
 read -r -p "Símbolo/ticker [RUT]: " TOKEN_SYMBOL
 TOKEN_SYMBOL="${TOKEN_SYMBOL:-RUT}"
 
+# Nome técnico do contrato baseado no símbolo da moeda.
+CONTRACT_NAME="${TOKEN_SYMBOL^^}"
 
-
-
-# Nome técnico exclusivo do contrato Solidity
-TOKEN_CONTRACT_NAME="${TOKEN_SYMBOL}Token"
-
-# Garante que o identificador Solidity comece com letra
-if [[ "$TOKEN_CONTRACT_NAME" =~ ^[0-9] ]]; then
-    TOKEN_CONTRACT_NAME="Token${TOKEN_CONTRACT_NAME}"
+# Solidity não permite identificadores iniciados por números.
+if [[ "$CONTRACT_NAME" =~ ^[0-9] ]]; then
+    CONTRACT_NAME="Token${CONTRACT_NAME}"
 fi
 
-
+CONTRACT_FILE="contracts/${CONTRACT_NAME}.sol"
+TEST_FILE="test/${CONTRACT_NAME}.js"
 
 
 
@@ -300,6 +300,7 @@ echo "=========================================="
 
 TOKEN_NAME="$TOKEN_NAME" \
 TOKEN_SYMBOL="$TOKEN_SYMBOL" \
+CONTRACT_NAME="$CONTRACT_NAME" \
 INITIAL_SUPPLY="$INITIAL_SUPPLY" \
 TOKEN_DECIMALS="$TOKEN_DECIMALS" \
 INITIAL_HOLDER="$INITIAL_HOLDER" \
@@ -317,6 +318,7 @@ const fs = require("fs");
 const config = {
     name: process.env.TOKEN_NAME,
     symbol: process.env.TOKEN_SYMBOL,
+    contractName: process.env.CONTRACT_NAME,
     initialSupply: process.env.INITIAL_SUPPLY,
     decimals: Number(process.env.TOKEN_DECIMALS),
     initialHolder: process.env.INITIAL_HOLDER || "",
@@ -353,6 +355,9 @@ const c = require("./.token-config.json");
 
 console.log("Nome:", c.name);
 console.log("Símbolo:", c.symbol);
+console.log("Nome técnico do contrato:", c.contractName);
+console.log("Arquivo Solidity:", `contracts/${c.contractName}.sol`);
+console.log("Arquivo de testes:", `test/${c.contractName}.js`);
 console.log("Emissão inicial:", c.initialSupply);
 console.log("Casas decimais:", c.decimals);
 console.log("Carteira inicial:", c.initialHolder || "Carteira implantadora");
@@ -401,14 +406,14 @@ EOF
 # Mint e Burn são incluídos somente quando habilitados.
 # ============================================================
 
-cat > contracts/MeuToken.sol <<'EOF'
+cat > "$CONTRACT_FILE" <<EOF
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.39;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract MeuToken is ERC20, Ownable {
+contract ${CONTRACT_NAME} is ERC20, Ownable {
     uint8 private immutable _customDecimals;
 
     bytes32 public immutable tokenId;
@@ -451,7 +456,7 @@ EOF
 # ---------------- Mint condicional ----------------
 
 if [[ "$MINT_ENABLED" == "true" ]]; then
-    cat >> contracts/MeuToken.sol <<'EOF'
+    cat >> "$CONTRACT_FILE" <<'EOF'
 
     // Mint: somente o proprietário pode emitir novos tokens.
     function mint(address to, uint256 amount) external onlyOwner {
@@ -464,7 +469,7 @@ fi
 # ---------------- Burn condicional ----------------
 
 if [[ "$BURN_ENABLED" == "true" ]]; then
-    cat >> contracts/MeuToken.sol <<'EOF'
+    cat >> "$CONTRACT_FILE" <<'EOF'
 
     // Burn: cada titular pode queimar seus próprios tokens.
     function burn(uint256 amount) external {
@@ -473,7 +478,7 @@ if [[ "$BURN_ENABLED" == "true" ]]; then
 EOF
 fi
 
-echo "}" >> contracts/MeuToken.sol
+echo "}" >> "$CONTRACT_FILE"
 
 
 
@@ -482,11 +487,11 @@ echo "}" >> contracts/MeuToken.sol
 # FÁBRICA DE TOKENS - CREATE2
 # ============================================================
 
-cat > contracts/TokenFactory.sol <<'EOF'
+cat > contracts/TokenFactory.sol <<EOF
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-import "./MeuToken.sol";
+import "./${CONTRACT_NAME}.sol";
 
 contract TokenFactory {
 
@@ -509,7 +514,7 @@ contract TokenFactory {
 
         // CREATE2 cria o token utilizando um salt exclusivo.
         // O proprietário será a carteira que chamou a fábrica.
-        MeuToken token = new MeuToken{salt: salt}(
+        ${CONTRACT_NAME} token = new ${CONTRACT_NAME}{salt: salt}(
             tokenName,
             tokenSymbol,
             initialSupply,
@@ -532,6 +537,16 @@ contract TokenFactory {
     }
 }
 EOF
+
+
+
+
+
+
+
+
+
+
 
 
 # ============================================================
@@ -748,7 +763,7 @@ async function main() {
     
     // Recupera o contrato ERC-20 no endereço criado pela fábrica.
     const token = await hre.ethers.getContractAt(
-        "MeuToken",
+        cfg.contractName,
         address
     );
     
@@ -757,6 +772,18 @@ async function main() {
     
     console.log("Token implantado:", address);
     console.log("Transação:", tx.hash);
+
+
+
+
+
+
+
+
+
+
+
+
 
 
     const explorerBase = String(selected.explorer || "")
@@ -781,6 +808,8 @@ async function main() {
         initialHolder,
         deployer: deployer.address,
         contractAddress: address,
+        contractName: cfg.contractName,
+        contractSource: `contracts/${cfg.contractName}.sol`,
         transactionHash: tx ? tx.hash : null,
         explorer: explorerBase
             ? `${explorerBase}/address/${address}`
@@ -820,17 +849,17 @@ EOF
 # TESTES
 # ============================================================
 
-cat > test/MeuToken.js <<'EOF'
+cat > "$TEST_FILE" <<EOF
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const config = require("../.token-config.json");
 
-describe("MeuToken personalizavel", function () {
+describe("${CONTRACT_NAME} personalizavel", function () {
 
     async function deployToken(options = {}) {
         const [owner, other] = await ethers.getSigners();
 
-        const Token = await ethers.getContractFactory("MeuToken");
+        const Token = await ethers.getContractFactory("${CONTRACT_NAME}");
 
         const token = await Token.deploy(
             options.name || "Minha Moeda",
@@ -1445,6 +1474,12 @@ if ! npm audit --omit=dev; then
 fi
 
 
+
+
+
+
+
+
 cat > revogar.sh <<'REVOGAR_EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -1917,7 +1952,7 @@ set -Eeuo pipefail
 
 # ============================================================
 # GERAR CONSTRUCTOR ARGUMENTS ABI-ENCODED
-# ERC-20 MeuToken - OpenZeppelin Ownable 5
+# ERC-20 personalizado - OpenZeppelin Ownable 5
 # Polygon, Base, BNB Chain, Ethereum e outras EVM
 # ============================================================
 
@@ -2260,7 +2295,7 @@ for (const [sourceName, sourceContracts] of Object.entries(
 // ------------------------------------------------------------
 
 let mainContract = contracts.find(
-    item => item.name === "MeuToken"
+    item => item.name === config.contractName
 );
 
 if (!mainContract && contracts.length === 1) {
@@ -2315,6 +2350,8 @@ if (fs.existsSync(deploymentDirectory)) {
             decimals: d.decimals ?? null,
             initialHolder: d.initialHolder || null,
             tokenId: d.tokenId || null,
+            contractName: d.contractName || config.contractName || null,
+            contractSource: d.contractSource || null,
             uniqueFingerprint: d.uniqueFingerprint || null,
             deployer: d.deployer || null
         };
@@ -2523,43 +2560,6 @@ SCRIPT_EOF
 
 chmod +x contractautenticar.sh
 
-cat > install.sh <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-
-# ============================================================
-# INSTALADOR - DEPLOY E VERIFICAÇÃO DO TOKEN
-# ============================================================
-
-echo
-echo "=========================================="
-echo "       DEPLOY E VERIFICACAO DO TOKEN"
-echo "=========================================="
-echo
-
-echo "[1/3] Implantando contrato..."
-npm run deploy
-
-echo
-echo "[2/3] Gerando arquivos de verificacao..."
-./contractautenticar.sh
-
-echo
-echo "[3/3] Gerando argumentos ABI..."
-./abiencode.sh
-
-echo
-echo "=========================================="
-echo "       PROCESSO CONCLUIDO COM SUCESSO"
-echo "=========================================="
-echo
-EOF
-
-chmod +x install.sh
-
-echo "Arquivo install.sh criado e permissao ativada."
-
-
 
 # ============================================================
 # README
@@ -2643,27 +2643,6 @@ EOF
 chmod +x readme.sh
 
 # ============================================================
-# PERSONALIZAR NOME DO CONTRATO E ARQUIVOS
-# ============================================================
-
-# Substitui todas as referências internas MeuToken
-# pelo nome técnico gerado a partir do símbolo.
-
-find . -type f \
-    \( -name '*.sol' -o -name '*.js' -o -name '*.sh' \) \
-    -not -path './node_modules/*' \
-    -not -path './artifacts/*' \
-    -exec sed -i "s/MeuToken/${TOKEN_CONTRACT_NAME}/g" {} +
-
-# Renomeia os arquivos principais
-mv contracts/MeuToken.sol \
-   "contracts/${TOKEN_CONTRACT_NAME}.sol"
-
-mv test/MeuToken.js \
-   "test/${TOKEN_CONTRACT_NAME}.js"
-
-
-# ============================================================
 # FINALIZAÇÃO
 # ============================================================
 
@@ -2675,11 +2654,14 @@ echo "Projeto: ${PROJECT_DIR}"
 echo "Rede: ${NETWORK_NAME}"
 echo "Mint: $([[ "$MINT_ENABLED" == "true" ]] && echo "Habilitado" || echo "Desabilitado")"
 echo "Burn: $([[ "$BURN_ENABLED" == "true" ]] && echo "Habilitado" || echo "Desabilitado")"
+echo "Contrato: $CONTRACT_NAME"
+echo "Arquivo Solidity: $CONTRACT_FILE"
+echo "Arquivo de testes: $TEST_FILE"
 echo
 echo "Arquivos principais:"
-echo "  contracts/${TOKEN_CONTRACT_NAME}.sol"
+echo "  $CONTRACT_FILE"
 echo "  scripts/deploy.js"
-echo "  test/${TOKEN_CONTRACT_NAME}.js"
+echo "  $TEST_FILE"
 echo "  validar_moeda.sh"
 echo "  verificar_carteira.sh"
 echo "  readme.sh"
