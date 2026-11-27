@@ -48,6 +48,46 @@ fi
 echo "Node.js: $(node -v)"
 echo "NPM: $(npm -v)"
 
+
+
+
+if command -v git >/dev/null 2>&1; then
+    echo "[OK] Git já está instalado."
+else
+    echo "[AVISO] Git não encontrado. Iniciando instalação..."
+
+    if command -v apt-get >/dev/null 2>&1; then
+        apt-get update
+        apt-get install -y git
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y git
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y git
+    elif command -v apk >/dev/null 2>&1; then
+        apk add git
+    else
+        echo "[ERRO] Gerenciador de pacotes não identificado."
+        exit 1
+    fi
+fi
+
+echo
+echo "================================================"
+echo "VERIFICACAO FINAL DO GIT"
+echo "================================================"
+
+if command -v git >/dev/null 2>&1; then
+    echo "[OK] Git instalado."
+    git --version
+    echo "Caminho: $(command -v git)"
+else
+    echo "[ERRO] Não foi possível instalar o Git."
+    exit 1
+fi
+
+
+
+
 # ---------------- Catálogo de redes ----------------
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -1011,6 +1051,28 @@ node_modules/
 cache/
 artifacts/
 coverage/
+
+node_modules/
+.env
+.token-config.json
+cache/
+artifacts/
+coverage/
+
+# Dependencias e arquivos gerados
+node_modules/
+artifacts/
+cache/
+
+# Logs locais
+logs/
+
+# Segredos e configuracoes privadas
+.env
+.token-config.json
+node_modules
+artifacts
+cache
 EOF
 
 # ============================================================
