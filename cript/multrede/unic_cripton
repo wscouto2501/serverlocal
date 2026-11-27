@@ -258,20 +258,14 @@ if [[ ! "$TOKEN_DECIMALS" =~ ^([0-9]|1[0-8])$ ]]; then
     exit 1
 fi
 
-if [[ -z "$INITIAL_DISTRIBUTION" ]]; then
-    echo "ERRO: informe pelo menos uma carteira."
-    exit 1
-fi
 
-node - "$INITIAL_DISTRIBUTION" <<'NODE'
+if [[ -n "$INITIAL_DISTRIBUTION" ]]; then
+
+    node - "$INITIAL_DISTRIBUTION" <<'NODE'
 const { isAddress } = require("ethers");
 const input = process.argv[2];
 
 const entries = input.split("|");
-
-if (entries.length < 1) {
-    throw new Error("Informe pelo menos uma carteira.");
-}
 
 const wallets = [];
 let totalBps = 0;
@@ -294,8 +288,10 @@ for (let i = 0; i < entries.length; i++) {
             throw new Error("A primeira carteira recebe automaticamente o restante.");
         }
     } else {
-        if (parts.length !== 2 ||
-            !/^(100|[0-9]{1,2})(\.[0-9]{1,2})?$/.test(parts[1])) {
+        if (
+            parts.length !== 2 ||
+            !/^(100|[0-9]{1,2})(\.[0-9]{1,2})?$/.test(parts[1])
+        ) {
             throw new Error(`Percentual inválido na carteira ${i + 1}.`);
         }
 
@@ -315,12 +311,30 @@ for (let i = 0; i < entries.length; i++) {
 }
 
 if (totalBps >= 10000) {
-    throw new Error("A soma dos percentuais das outras carteiras deve ser menor que 100%.");
+    throw new Error(
+        "A soma dos percentuais das outras carteiras deve ser menor que 100%."
+    );
 }
 
 console.log("Distribuição validada.");
 console.log(`Carteira principal: ${(10000 - totalBps) / 100}%`);
 NODE
+
+else
+    echo "Distribuição: 100% para a carteira implantadora."
+fi
+
+
+
+
+
+
+
+
+
+
+
+
 
 # Confere o limite de uint256 antes de criar o projeto.
 node - "$INITIAL_SUPPLY" "$TOKEN_DECIMALS" <<'NODE'
