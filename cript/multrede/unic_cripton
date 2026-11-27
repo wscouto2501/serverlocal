@@ -225,7 +225,7 @@ INITIAL_SUPPLY="${INITIAL_SUPPLY:-10000000}"
 read -r -p "Casas decimais (0 a 18) [18]: " TOKEN_DECIMALS
 TOKEN_DECIMALS="${TOKEN_DECIMALS:-18}"
 
-read -r -p "Carteira que receberá a emissão inicial (vazio = carteira implantadora): " INITIAL_HOLDER
+read -r -p "Distribuição das carteiras (Carteira1|Carteira2=10|Carteira3=15): " INITIAL_DISTRIBUTION
 
 read -r -p "Permitir novas emissões pelo administrador? (s/N): " MINT_ANSWER
 MINT_ANSWER="${MINT_ANSWER:-N}"
@@ -258,11 +258,69 @@ if [[ ! "$TOKEN_DECIMALS" =~ ^([0-9]|1[0-8])$ ]]; then
     exit 1
 fi
 
-if [[ -n "$INITIAL_HOLDER" ]] &&
-   [[ ! "$INITIAL_HOLDER" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
-    echo "ERRO: endereço da carteira inválido."
+if [[ -z "$INITIAL_DISTRIBUTION" ]]; then
+    echo "ERRO: informe pelo menos uma carteira."
     exit 1
 fi
+
+node - "$INITIAL_DISTRIBUTION" <<'NODE'
+const { isAddress } = require("ethers");
+const input = process.argv[2];
+
+const entries = input.split("|");
+
+if (entries.length < 1) {
+    throw new Error("Informe pelo menos uma carteira.");
+}
+
+const wallets = [];
+let totalBps = 0;
+
+for (let i = 0; i < entries.length; i++) {
+    const parts = entries[i].split("=");
+
+    if (parts.length > 2 || !isAddress(parts[0])) {
+        throw new Error(`Carteira ${i + 1} inválida.`);
+    }
+
+    if (wallets.some(w => w.address.toLowerCase() === parts[0].toLowerCase())) {
+        throw new Error("Não é permitido repetir carteiras.");
+    }
+
+    let bps = null;
+
+    if (i === 0) {
+        if (parts.length !== 1) {
+            throw new Error("A primeira carteira recebe automaticamente o restante.");
+        }
+    } else {
+        if (parts.length !== 2 ||
+            !/^(100|[0-9]{1,2})(\.[0-9]{1,2})?$/.test(parts[1])) {
+            throw new Error(`Percentual inválido na carteira ${i + 1}.`);
+        }
+
+        bps = Math.round(Number(parts[1]) * 100);
+
+        if (bps <= 0) {
+            throw new Error("Os percentuais devem ser maiores que zero.");
+        }
+
+        totalBps += bps;
+    }
+
+    wallets.push({
+        address: parts[0],
+        bps
+    });
+}
+
+if (totalBps >= 10000) {
+    throw new Error("A soma dos percentuais das outras carteiras deve ser menor que 100%.");
+}
+
+console.log("Distribuição validada.");
+console.log(`Carteira principal: ${(10000 - totalBps) / 100}%`);
+NODE
 
 # Confere o limite de uint256 antes de criar o projeto.
 node - "$INITIAL_SUPPLY" "$TOKEN_DECIMALS" <<'NODE'
@@ -347,7 +405,7 @@ TOKEN_SYMBOL="$TOKEN_SYMBOL" \
 CONTRACT_NAME="$CONTRACT_NAME" \
 INITIAL_SUPPLY="$INITIAL_SUPPLY" \
 TOKEN_DECIMALS="$TOKEN_DECIMALS" \
-INITIAL_HOLDER="$INITIAL_HOLDER" \
+INITIAL_DISTRIBUTION="$INITIAL_DISTRIBUTION" \
 MINT_ENABLED="$MINT_ENABLED" \
 BURN_ENABLED="$BURN_ENABLED" \
 TOKEN_DESCRIPTION="$TOKEN_DESCRIPTION" \
@@ -365,7 +423,30 @@ const config = {
     contractName: process.env.CONTRACT_NAME,
     initialSupply: process.env.INITIAL_SUPPLY,
     decimals: Number(process.env.TOKEN_DECIMALS),
-    initialHolder: process.env.INITIAL_HOLDER || "",
+    distribution: (() => {
+        const entries = process.env.INITIAL_DISTRIBUTION.split("|");
+        let totalBps = 0;
+    
+        return entries.map((entry, index) => {
+            const [address, percentage] = entry.split("=");
+    
+            const bps = index === 0
+                ? null
+                : Math.round(Number(percentage) * 100);
+    
+            if (bps !== null) totalBps += bps;
+    
+            return { address, bps };
+        });
+    })(),
+
+
+
+
+
+
+
+
     mintEnabled: process.env.MINT_ENABLED === "true",
     burnEnabled: process.env.BURN_ENABLED === "true",
     description: process.env.TOKEN_DESCRIPTION || "",
@@ -462,38 +543,49 @@ contract ${CONTRACT_NAME} is ERC20, Ownable {
 
     bytes32 public immutable tokenId;
     bytes32 public immutable uniqueFingerprint;
-   
+
     constructor(
         string memory tokenName,
         string memory tokenSymbol,
         uint256 initialSupply,
         uint8 tokenDecimals,
-        address initialHolder,
+        address[] memory recipients,
+        uint256[] memory allocations,
         bytes32 uniqueTokenId,
         bytes32 _uniqueFingerprint,
         address tokenOwner
     ) ERC20(tokenName, tokenSymbol) Ownable(tokenOwner) {
-        require(initialHolder != address(0), "Invalid initial holder");
         require(tokenDecimals <= 18, "Decimals above 18");
         require(uniqueTokenId != bytes32(0), "Invalid token ID");
         require(_uniqueFingerprint != bytes32(0), "Invalid fingerprint");
-
+        require(recipients.length > 0, "No recipients");
+        require(recipients.length == allocations.length, "Array mismatch");
+    
         _customDecimals = tokenDecimals;
         tokenId = uniqueTokenId;
         uniqueFingerprint = _uniqueFingerprint;
-
+    
         uint256 multiplier = 10 ** uint256(tokenDecimals);
-
+    
         require(
             initialSupply <= type(uint256).max / multiplier,
             "Initial supply overflow"
         );
-
-        _mint(initialHolder, initialSupply * multiplier);
-    }
-
-    function decimals() public view override returns (uint8) {
-        return _customDecimals;
+    
+        uint256 totalAllocated;
+    
+        for (uint256 i = 0; i < recipients.length; i++) {
+            require(recipients[i] != address(0), "Invalid recipient");
+            require(allocations[i] > 0, "Invalid allocation");
+    
+            totalAllocated += allocations[i];
+            _mint(recipients[i], allocations[i]);
+        }
+    
+        require(
+            totalAllocated == initialSupply * multiplier,
+            "Allocation mismatch"
+        );
     }
 EOF
 
@@ -545,40 +637,42 @@ contract TokenFactory {
         bytes32 indexed salt
     );
 
+    
     function deployToken(
         string memory tokenName,
         string memory tokenSymbol,
         uint256 initialSupply,
         uint8 tokenDecimals,
-        address initialHolder,
+        address[] memory recipients,
+        uint256[] memory allocations,
         bytes32 uniqueTokenId,
         bytes32 uniqueFingerprint,
         bytes32 salt
     ) external returns (address) {
-
-        // CREATE2 cria o token utilizando um salt exclusivo.
-        // O proprietário será a carteira que chamou a fábrica.
+    
         ${CONTRACT_NAME} token = new ${CONTRACT_NAME}{salt: salt}(
             tokenName,
             tokenSymbol,
             initialSupply,
             tokenDecimals,
-            initialHolder,
+            recipients,
+            allocations,
             uniqueTokenId,
             uniqueFingerprint,
             msg.sender
         );
-
+    
         address tokenAddress = address(token);
-
+    
         emit TokenDeployed(
             tokenAddress,
             msg.sender,
             salt
         );
-
+    
         return tokenAddress;
     }
+
 }
 EOF
 
@@ -694,11 +788,51 @@ async function main() {
         );
     }
 
-    const initialHolder = cfg.initialHolder || deployer.address;
 
-    if (!hre.ethers.isAddress(initialHolder)) {
-        throw new Error("Endereço inicial inválido.");
+    
+    
+    if (!Array.isArray(cfg.distribution) || cfg.distribution.length === 0) {
+        throw new Error("Distribuição de carteiras inválida.");
     }
+    
+    const recipients = cfg.distribution.map(item =>
+        hre.ethers.getAddress(item.address || deployer.address)
+    );
+    
+    const totalBps = cfg.distribution
+        .slice(1)
+        .reduce((sum, item) => sum + item.bps, 0);
+    
+    if (totalBps >= 10000) {
+        throw new Error("Percentuais ultrapassam o limite permitido.");
+    }
+    
+    const percentages = [
+        10000 - totalBps,
+        ...cfg.distribution.slice(1).map(item => item.bps)
+    ];
+    
+    const supply = BigInt(cfg.initialSupply);
+    const multiplier = 10n ** BigInt(cfg.decimals);
+    const totalRaw = supply * multiplier;
+    
+    const allocations = percentages.map((bps, index) =>
+        index === percentages.length - 1
+            ? 0n
+            : totalRaw * BigInt(bps) / 10000n
+    );
+    
+    allocations[allocations.length - 1] =
+        totalRaw - allocations
+            .slice(0, -1)
+            .reduce((sum, amount) => sum + amount, 0n);
+    
+    if (recipients.length !== allocations.length) {
+        throw new Error("Distribuição incompatível.");
+    }
+    
+    const initialHolder = recipients[0];
+
 
     // Verificação adicional do fornecimento antes da implantação.
     const supply = BigInt(cfg.initialSupply);
@@ -778,7 +912,8 @@ async function main() {
         cfg.symbol,
         cfg.initialSupply,
         cfg.decimals,
-        initialHolder,
+        recipients,
+        allocations,
         uniqueTokenId,
         uniqueFingerprint,
         uniqueSalt
@@ -850,6 +985,12 @@ async function main() {
         uniqueFingerprint: await token.uniqueFingerprint(),
         description: cfg.description,
         initialHolder,
+        distribution: recipients.map((address, index) => ({
+            address,
+            percentage: percentages[index] / 100,
+            allocation: allocations[index].toString()
+        })),
+
         deployer: deployer.address,
         contractAddress: address,
         contractName: cfg.contractName,
@@ -910,7 +1051,8 @@ describe("${CONTRACT_NAME} personalizavel", function () {
             options.symbol || "MMC",
             options.supply || "10000000",
             options.decimals ?? 18,
-            options.holder || owner.address,
+            [options.holder || owner.address],
+            [BigInt(options.supply || "10000000") * 10n ** BigInt(options.decimals ?? 18)],
             ethers.hexlify(ethers.randomBytes(32)),
             ethers.hexlify(ethers.randomBytes(32)),
             owner.address
@@ -2079,18 +2221,25 @@ async function main() {
         fs.readFileSync(".token-config.json", "utf8")
     );
 
+
+
+
     const required = [
         "name",
         "symbol",
         "decimals",
-        "initialHolder",
+        "distribution",
         "tokenId",
         "uniqueFingerprint",
         "deployer"
     ];
 
     for (const field of required) {
-        if (d[field] === undefined || d[field] === null || d[field] === "") {
+        if (
+            d[field] === undefined ||
+            d[field] === null ||
+            d[field] === ""
+        ) {
             throw new Error(
                 `Campo ${field} ausente no deployment.json.`
             );
@@ -2107,13 +2256,36 @@ async function main() {
         );
     }
 
+    const distribution = d.distribution;
+
+    if (
+        !Array.isArray(distribution) ||
+        distribution.length === 0
+    ) {
+        throw new Error(
+            "Distribuição não encontrada no deployment.json."
+        );
+    }
+
+    for (const item of distribution) {
+        if (
+            !ethers.isAddress(item.address) ||
+            !/^[0-9]+$/.test(String(item.allocation))
+        ) {
+            throw new Error(
+                "Endereço ou quantidade inválida na distribuição."
+            );
+        }
+    }
+
     const encoded = ethers.AbiCoder.defaultAbiCoder().encode(
         [
             "string",
             "string",
             "uint256",
             "uint8",
-            "address",
+            "address[]",
+            "uint256[]",
             "bytes32",
             "bytes32",
             "address"
@@ -2123,12 +2295,14 @@ async function main() {
             d.symbol,
             BigInt(c.initialSupply),
             d.decimals,
-            d.initialHolder,
+            distribution.map(item => item.address),
+            distribution.map(item => BigInt(item.allocation)),
             d.tokenId,
             d.uniqueFingerprint,
             d.deployer
         ]
     );
+
 
     console.log("Nome:", d.name);
     console.log("Símbolo:", d.symbol);
