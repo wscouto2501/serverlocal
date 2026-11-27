@@ -1712,12 +1712,6 @@ if ! npm audit --omit=dev; then
 fi
 
 
-
-
-
-
-
-
 cat > revogar.sh <<'REVOGAR_EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
@@ -3276,11 +3270,12 @@ fi
 if [[ -f contracts/TokenFactory.sol ]]; then
     ok "TokenFactory.sol encontrado."
 
-    if grep -q 'CREATE2\|create2' contracts/TokenFactory.sol; then
-        ok "Referencia a CREATE2 encontrada na fabrica."
+    if grep -Eq 'new[[:space:]].*\{[[:space:]]*salt[[:space:]]*:' contracts/TokenFactory.sol; then
+        ok "Implementacao CREATE2 encontrada na fabrica."
     else
-        warn "CREATE2 nao identificado pelo nome no TokenFactory."
+        fail "Implementacao CREATE2 nao encontrada na fabrica."
     fi
+
 else
     warn "TokenFactory.sol nao encontrado."
 fi
