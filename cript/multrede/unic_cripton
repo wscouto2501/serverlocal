@@ -262,7 +262,9 @@ fi
 if [[ -n "$INITIAL_DISTRIBUTION" ]]; then
 
     node - "$INITIAL_DISTRIBUTION" <<'NODE'
-const { isAddress } = require("ethers");
+const isAddress = address =>
+    typeof address === "string" &&
+    /^0x[a-fA-F0-9]{40}$/.test(address);
 const input = process.argv[2];
 
 const entries = input.split("|");
@@ -499,7 +501,15 @@ console.log("Arquivo Solidity:", `contracts/${c.contractName}.sol`);
 console.log("Arquivo de testes:", `test/${c.contractName}.js`);
 console.log("Emissão inicial:", c.initialSupply);
 console.log("Casas decimais:", c.decimals);
-console.log("Carteira inicial:", c.initialHolder || "Carteira implantadora");
+console.log("Distribuição:");
+
+c.distribution.forEach((item, index) => {
+    console.log(
+        `Carteira ${index + 1}:`,
+        item.address || "Carteira implantadora",
+        index === 0 ? "(restante)" : `(${item.bps / 100}%)`
+    );
+});
 console.log("Novas emissões:", c.mintEnabled ? "Permitidas" : "Desativadas");
 console.log("Queima:", c.burnEnabled ? "Ativada" : "Desativada");
 console.log("Descrição:", c.description || "(não informada)");
@@ -600,6 +610,11 @@ contract ${CONTRACT_NAME} is ERC20, Ownable {
             totalAllocated == initialSupply * multiplier,
             "Allocation mismatch"
         );
+    }
+
+    // Retorna as casas decimais configuradas para o token.
+    function decimals() public view override returns (uint8) {
+        return _customDecimals;
     }
 EOF
 
@@ -1160,8 +1175,10 @@ describe("${CONTRACT_NAME} personalizavel", function () {
                 .to.equal(true);
 
             const initialBalance = await token.balanceOf(owner.address);
-            const amount = ethers.parseUnits("100", 18);
-
+            const amount = ethers.parseUnits(
+                "100",
+                Number(await token.decimals())
+            );
             await token.burn(amount);
 
             expect(await token.balanceOf(owner.address))
@@ -2199,7 +2216,14 @@ if [[ ! -d "deployments" ]]; then
     exit 1
 fi
 
-DEPLOY=$(find deployments -type f -name deployment.json | sort | head -n 1)
+NETWORK_KEY="$(node -p 'require("./.token-config.json").network.key')"
+
+DEPLOY="deployments/${NETWORK_KEY}/deployment.json"
+
+if [[ ! -s "$DEPLOY" ]]; then
+    echo "ERRO: deployment.json não encontrado para a rede configurada."
+    exit 1
+fi
 
 if [[ -z "$DEPLOY" ]]; then
     echo "ERRO: arquivo deployment.json não encontrado."
@@ -3155,28 +3179,46 @@ if (!Array.isArray(c.distribution) || c.distribution.length === 0)
     throw Error("Distribuicao de carteiras invalida");
 
 let totalBps = 0;
+const seen = new Set();
 
-for (const item of c.distribution) {
+for (let i = 0; i < c.distribution.length; i++) {
+    const item = c.distribution[i];
+
     if (!item || typeof item.address !== "string")
         throw Error("Endereco da carteira invalido");
 
-    // Endereco vazio é permitido: significa carteira implantadora.
-    if (item.address !== "" &&
-        !/^0x[a-fA-F0-9]{40}$/.test(item.address))
+    // Carteira principal pode ficar vazia somente quando
+    // a distribuição for 100% para a carteira implantadora.
+    if (i === 0 && item.address === "") {
+        if (c.distribution.length !== 1 || item.bps !== null)
+            throw Error("Distribuicao da carteira implantadora invalida");
+
+        continue;
+    }
+
+    if (!/^0x[a-fA-F0-9]{40}$/.test(item.address))
         throw Error("Endereco da carteira invalido: " + item.address);
 
-    // A primeira carteira recebe o restante.
-    if (item.bps !== null && item.bps !== undefined) {
-        if (!Number.isInteger(item.bps) || item.bps < 0 || item.bps > 10000)
+    const normalized = item.address.toLowerCase();
+
+    if (seen.has(normalized))
+        throw Error("Carteira repetida na distribuicao");
+
+    seen.add(normalized);
+
+    if (i === 0) {
+        if (item.bps !== null)
+            throw Error("A primeira carteira deve receber o restante");
+    } else {
+        if (!Number.isInteger(item.bps) || item.bps <= 0 || item.bps >= 10000)
             throw Error("Percentual invalido na distribuicao");
 
         totalBps += item.bps;
     }
 }
 
-if (totalBps > 10000)
-    throw Error("A soma dos percentuais ultrapassa 100%");
-
+if (totalBps >= 10000)
+    throw Error("A soma dos percentuais deve ser menor que 100%");
 
 
 
