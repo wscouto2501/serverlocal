@@ -206,10 +206,10 @@ CONTRACT_NAME="${TOKEN_SYMBOL^^}"
 # Solidity não permite identificadores iniciados por números.
 # Letra no início: adiciona Token no final.
 # Número no início: adiciona Token no início.
-if [[ "$CONTRACT_NAME" =~ ^[a-zA-Z] ]]; then
-    CONTRACT_NAME="${CONTRACT_NAME}Token"
-elif [[ "$CONTRACT_NAME" =~ ^[0-9] ]]; then
+if [[ "$CONTRACT_NAME" =~ ^[0-9] ]]; then
     CONTRACT_NAME="Token${CONTRACT_NAME}"
+else
+    CONTRACT_NAME="${CONTRACT_NAME}Token"
 fi
 
 CONTRACT_FILE="contracts/${CONTRACT_NAME}.sol"
