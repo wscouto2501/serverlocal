@@ -849,8 +849,6 @@ async function main() {
 
 
     // Verificação adicional do fornecimento antes da implantação.
-    const supply = BigInt(cfg.initialSupply);
-    const multiplier = 10n ** BigInt(cfg.decimals);
     const maxUint256 = (1n << 256n) - 1n;
 
     if (supply <= 0n || supply > maxUint256 / multiplier) {
@@ -942,7 +940,8 @@ async function main() {
         cfg.symbol,
         cfg.initialSupply,
         cfg.decimals,
-        initialHolder,
+        recipients,
+        allocations,
         uniqueTokenId,
         uniqueFingerprint,
         uniqueSalt
@@ -3152,9 +3151,35 @@ const multiplier = 10n ** BigInt(c.decimals);
 if (supply <= 0n || supply > max / multiplier)
     throw Error("Supply ultrapassa uint256");
 
-if (c.initialHolder &&
-    !/^0x[a-fA-F0-9]{40}$/.test(c.initialHolder))
-    throw Error("Endereco initialHolder invalido");
+if (!Array.isArray(c.distribution) || c.distribution.length === 0)
+    throw Error("Distribuicao de carteiras invalida");
+
+let totalBps = 0;
+
+for (const item of c.distribution) {
+    if (!item || typeof item.address !== "string")
+        throw Error("Endereco da carteira invalido");
+
+    // Endereco vazio é permitido: significa carteira implantadora.
+    if (item.address !== "" &&
+        !/^0x[a-fA-F0-9]{40}$/.test(item.address))
+        throw Error("Endereco da carteira invalido: " + item.address);
+
+    // A primeira carteira recebe o restante.
+    if (item.bps !== null && item.bps !== undefined) {
+        if (!Number.isInteger(item.bps) || item.bps < 0 || item.bps > 10000)
+            throw Error("Percentual invalido na distribuicao");
+
+        totalBps += item.bps;
+    }
+}
+
+if (totalBps > 10000)
+    throw Error("A soma dos percentuais ultrapassa 100%");
+
+
+
+
 
 if (c.network.family !== "evm" || c.network.module !== "evm")
     throw Error("Rede nao compativel com EVM");
