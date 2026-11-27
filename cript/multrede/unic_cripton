@@ -489,7 +489,7 @@ echo "}" >> "$CONTRACT_FILE"
 
 cat > contracts/TokenFactory.sol <<EOF
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity ^0.8.39;
 
 import "./${CONTRACT_NAME}.sol";
 
@@ -2561,6 +2561,699 @@ SCRIPT_EOF
 chmod +x contractautenticar.sh
 
 
+cat > verificar_projeto.sh <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# ============================================================
+# VALIDACAO COMPLETA PRE-IMPLANTACAO
+# TOKEN MULTIRREDE EVM - HARDHAT
+#
+# SOMENTE TESTES LOCAIS
+#
+# NAO:
+# - Implanta contratos
+# - Envia transacoes
+# - Conecta a RPC
+# - Solicita chave privada
+# - Assina transacoes
+# - Modifica contratos na blockchain
+#
+# TESTA:
+# - Estrutura do projeto
+# - Arquivos Solidity
+# - Imports e OpenZeppelin
+# - Configuracao JSON
+# - Package e dependencias
+# - Sintaxe dos scripts
+# - Compilacao limpa
+# - Artefatos e ABI
+# - ERC20 e Ownable
+# - Mint e Burn conforme configuracao
+# - Factory e CREATE2
+# - Testes automatizados locais
+# - Seguranca basica
+# ============================================================
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
+REPORT_DIR="$SCRIPT_DIR/logs"
+mkdir -p "$REPORT_DIR"
+
+DATE="$(date '+%Y%m%d_%H%M%S')"
+LOG="$REPORT_DIR/validacao_$DATE.log"
+
+OK=0
+WARN=0
+FAIL=0
+
+COMPILE_OK=0
+TEST_OK=0
+ARTIFACT_OK=0
+
+exec > >(tee -a "$LOG") 2>&1
+
+ok() {
+    echo "[ OK ] $*"
+    ((OK+=1))
+}
+
+warn() {
+    echo "[AVISO] $*"
+    ((WARN+=1))
+}
+
+fail() {
+    echo "[ERRO] $*"
+    ((FAIL+=1))
+}
+
+section() {
+    echo
+    echo "============================================================"
+    echo "$*"
+    echo "============================================================"
+}
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+section "VALIDACAO PRE-IMPLANTACAO"
+echo "Projeto: $SCRIPT_DIR"
+echo "Data: $(date)"
+echo "Modo: LOCAL - SEM BLOCKCHAIN"
+echo "Relatorio: $LOG"
+
+# ============================================================
+# 1. SISTEMA
+# ============================================================
+
+section "1. SISTEMA E FERRAMENTAS"
+
+if command_exists node; then
+    NODE_VERSION="$(node -v)"
+    NODE_MAJOR="$(node -p 'Number(process.versions.node.split(".")[0])')"
+    ok "Node.js: $NODE_VERSION"
+
+    if [[ "$NODE_MAJOR" -eq 24 ]]; then
+        ok "Node.js 24."
+    else
+        warn "Node.js diferente da versao 24."
+    fi
+else
+    fail "Node.js nao encontrado."
+fi
+
+if command_exists npm; then
+    ok "NPM: $(npm -v)"
+else
+    fail "NPM nao encontrado."
+fi
+
+if command_exists bash; then
+    ok "Bash disponivel."
+fi
+
+if command_exists git; then
+    ok "Git instalado."
+else
+    warn "Git nao instalado."
+fi
+
+# ============================================================
+# 2. ESTRUTURA
+# ============================================================
+
+section "2. ESTRUTURA DO PROJETO"
+
+REQUIRED_FILES=(
+    package.json
+    package-lock.json
+    hardhat.config.js
+    contracts
+    scripts
+    test
+    .token-config.json
+    .gitignore
+)
+
+for FILE in "${REQUIRED_FILES[@]}"; do
+    if [[ -e "$FILE" ]]; then
+        ok "Encontrado: $FILE"
+    else
+        fail "Ausente: $FILE"
+    fi
+done
+
+if [[ -d contracts ]]; then
+    SOL_COUNT="$(find contracts -type f -name '*.sol' | wc -l)"
+    if (( SOL_COUNT > 0 )); then
+        ok "$SOL_COUNT contrato(s) Solidity encontrado(s)."
+        find contracts -type f -name '*.sol' -print
+    else
+        fail "Nenhum contrato Solidity encontrado."
+    fi
+fi
+
+if [[ -d scripts ]]; then
+    JS_COUNT="$(find scripts -type f -name '*.js' | wc -l)"
+    if (( JS_COUNT > 0 )); then
+        ok "$JS_COUNT script(s) JavaScript encontrado(s)."
+    else
+        fail "Nenhum script JavaScript encontrado."
+    fi
+fi
+
+if [[ -d test ]]; then
+    TEST_COUNT="$(find test -type f \( -name '*.js' -o -name '*.cjs' \) | wc -l)"
+    if (( TEST_COUNT > 0 )); then
+        ok "$TEST_COUNT arquivo(s) de teste encontrado(s)."
+    else
+        warn "Nenhum arquivo JavaScript de teste encontrado."
+    fi
+fi
+
+# ============================================================
+# 3. SEGURANCA DOS ARQUIVOS
+# ============================================================
+
+section "3. PERMISSOES E SEGURANCA"
+
+for FILE in .env .token-config.json; do
+    if [[ -f "$FILE" ]]; then
+        MODE="$(stat -c '%a' "$FILE")"
+
+        if [[ "$MODE" == "600" ]]; then
+            ok "$FILE com permissao 600."
+        else
+            warn "$FILE com permissao $MODE. Recomendado 600."
+        fi
+    fi
+done
+
+if [[ -f .gitignore ]]; then
+    for ITEM in .env .token-config.json node_modules artifacts cache; do
+        if grep -qxF "$ITEM" .gitignore; then
+            ok "$ITEM protegido no .gitignore."
+        else
+            warn "$ITEM nao encontrado no .gitignore."
+        fi
+    done
+fi
+
+# ============================================================
+# 4. SINTAXE BASH
+# ============================================================
+
+section "4. SINTAXE DOS SCRIPTS BASH"
+
+for FILE in ./*.sh; do
+    [[ -f "$FILE" ]] || continue
+
+    if bash -n "$FILE"; then
+        ok "Sintaxe valida: $(basename "$FILE")"
+    else
+        fail "Erro de sintaxe: $(basename "$FILE")"
+    fi
+done
+
+# ============================================================
+# 5. DEPENDENCIAS
+# ============================================================
+
+section "5. DEPENDENCIAS NODE.JS"
+
+if [[ -d node_modules ]]; then
+    ok "node_modules encontrado."
+else
+    fail "node_modules ausente."
+fi
+
+for PACKAGE in hardhat ethers dotenv @nomicfoundation/hardhat-toolbox; do
+    if node -e '
+const fs = require("fs");
+const path = require("path");
+const p = path.join("node_modules", process.argv[1]);
+if (!fs.existsSync(p)) process.exit(1);
+' "$PACKAGE"; then
+        ok "Dependencia encontrada: $PACKAGE"
+    else
+        fail "Dependencia ausente: $PACKAGE"
+    fi
+done
+
+if [[ -f node_modules/@openzeppelin/contracts/package.json ]]; then
+    OZ_VERSION="$(node -p 'require("./node_modules/@openzeppelin/contracts/package.json").version')"
+    ok "OpenZeppelin: $OZ_VERSION"
+else
+    fail "OpenZeppelin nao encontrado."
+fi
+
+if [[ -d node_modules/@openzeppelin/contracts/token/ERC20 ]]; then
+    ok "Biblioteca ERC20 encontrada."
+else
+    fail "Biblioteca ERC20 ausente."
+fi
+
+if [[ -d node_modules/@openzeppelin/contracts/access ]]; then
+    ok "Biblioteca Access encontrada."
+else
+    fail "Biblioteca Access ausente."
+fi
+
+if npm ls --depth=0 >/dev/null 2>&1; then
+    ok "Dependencias principais consistentes."
+else
+    warn "npm ls encontrou dependencias inconsistentes."
+    npm ls --depth=0 || true
+fi
+
+# ============================================================
+# 6. PACKAGE.JSON
+# ============================================================
+
+section "6. PACKAGE.JSON"
+
+if node -e '
+const p = require("./package.json");
+
+if (!p.name) throw Error("Nome ausente");
+if (!p.scripts) throw Error("Scripts ausentes");
+if (!p.scripts.compile) throw Error("Script compile ausente");
+if (!p.scripts.test) throw Error("Script test ausente");
+if (!p.scripts.deploy) throw Error("Script deploy ausente");
+
+console.log("Projeto:", p.name);
+console.log("Versao:", p.version);
+console.log("Scripts:", Object.keys(p.scripts).join(", "));
+'; then
+    ok "package.json valido."
+else
+    fail "Problema no package.json."
+fi
+
+# ============================================================
+# 7. CONFIGURACAO DO TOKEN
+# ============================================================
+
+section "7. CONFIGURACAO DO TOKEN"
+
+CONFIG_VALID=0
+
+if [[ -f .token-config.json ]]; then
+    if node <<'NODE'
+const fs = require("fs");
+const c = JSON.parse(fs.readFileSync(".token-config.json", "utf8"));
+
+if (!c.name || typeof c.name !== "string")
+    throw Error("Nome ausente ou invalido");
+
+if (!c.symbol || typeof c.symbol !== "string")
+    throw Error("Simbolo ausente ou invalido");
+
+if (!/^[0-9]+$/.test(String(c.initialSupply)))
+    throw Error("Supply invalido");
+
+if (!Number.isInteger(c.decimals) || c.decimals < 0 || c.decimals > 18)
+    throw Error("Decimais invalidos");
+
+if (!c.network || !Number.isInteger(c.network.chainId))
+    throw Error("Rede ou Chain ID invalido");
+
+if (typeof c.mintEnabled !== "boolean")
+    throw Error("mintEnabled invalido");
+
+if (typeof c.burnEnabled !== "boolean")
+    throw Error("burnEnabled invalido");
+
+if (!c.contractName || typeof c.contractName !== "string")
+    throw Error("contractName ausente");
+
+const supply = BigInt(c.initialSupply);
+const max = (1n << 256n) - 1n;
+const multiplier = 10n ** BigInt(c.decimals);
+
+if (supply <= 0n || supply > max / multiplier)
+    throw Error("Supply ultrapassa uint256");
+
+if (c.initialHolder &&
+    !/^0x[a-fA-F0-9]{40}$/.test(c.initialHolder))
+    throw Error("Endereco initialHolder invalido");
+
+if (c.network.family !== "evm" || c.network.module !== "evm")
+    throw Error("Rede nao compativel com EVM");
+
+console.log("Nome:", c.name);
+console.log("Simbolo:", c.symbol);
+console.log("Contrato:", c.contractName);
+console.log("Supply:", c.initialSupply);
+console.log("Decimais:", c.decimals);
+console.log("Mint:", c.mintEnabled);
+console.log("Burn:", c.burnEnabled);
+console.log("Rede:", c.network.name);
+console.log("Chain ID:", c.network.chainId);
+NODE
+    then
+        CONFIG_VALID=1
+        ok "Configuracao do token valida."
+    else
+        fail "Configuracao do token invalida."
+    fi
+else
+    fail ".token-config.json ausente."
+fi
+
+# ============================================================
+# 8. CONTRATOS E IMPORTS
+# ============================================================
+
+section "8. ANALISE DOS CONTRATOS SOLIDITY"
+
+if [[ -d contracts ]]; then
+    while IFS= read -r FILE; do
+        [[ -f "$FILE" ]] || continue
+
+        if grep -q 'pragma solidity' "$FILE"; then
+            ok "Pragma Solidity encontrado: $FILE"
+        else
+            fail "Pragma Solidity ausente: $FILE"
+        fi
+
+        if grep -q 'import ' "$FILE"; then
+            echo "Imports de $FILE:"
+            grep -n 'import ' "$FILE"
+        fi
+
+        if grep -q 'TODO\|FIXME' "$FILE"; then
+            warn "Marcadores TODO/FIXME encontrados em $FILE."
+        fi
+    done < <(find contracts -type f -name '*.sol')
+fi
+
+if [[ -f contracts/TokenFactory.sol ]]; then
+    ok "TokenFactory.sol encontrado."
+
+    if grep -q 'CREATE2\|create2' contracts/TokenFactory.sol; then
+        ok "Referencia a CREATE2 encontrada na fabrica."
+    else
+        warn "CREATE2 nao identificado pelo nome no TokenFactory."
+    fi
+else
+    warn "TokenFactory.sol nao encontrado."
+fi
+
+# ============================================================
+# 9. SINTAXE JAVASCRIPT
+# ============================================================
+
+section "9. SINTAXE JAVASCRIPT"
+
+JS_FILES=()
+
+[[ -f hardhat.config.js ]] && JS_FILES+=(hardhat.config.js)
+
+while IFS= read -r FILE; do
+    JS_FILES+=("$FILE")
+done < <(find scripts test -type f \( -name '*.js' -o -name '*.cjs' \) 2>/dev/null)
+
+for FILE in "${JS_FILES[@]}"; do
+    if node --check "$FILE"; then
+        ok "JavaScript valido: $FILE"
+    else
+        fail "Erro de sintaxe JavaScript: $FILE"
+    fi
+done
+
+# ============================================================
+# 10. HARDHAT
+# ============================================================
+
+section "10. HARDHAT E CONFIGURACAO LOCAL"
+
+if [[ -x node_modules/.bin/hardhat ]]; then
+    HARDHAT_VERSION="$(npx --no-install hardhat --version)"
+    ok "Hardhat: $HARDHAT_VERSION"
+else
+    fail "Hardhat nao encontrado."
+fi
+
+if [[ -f hardhat.config.js ]]; then
+    if grep -q 'version:' hardhat.config.js; then
+        ok "Versao Solidity configurada no Hardhat."
+        grep -n 'version:' hardhat.config.js
+    else
+        fail "Versao Solidity nao identificada no Hardhat."
+    fi
+fi
+
+# ============================================================
+# 11. COMPILACAO LIMPA
+# ============================================================
+
+section "11. COMPILACAO LIMPA DOS CONTRATOS"
+
+if npx --no-install hardhat clean; then
+    ok "Cache e artefatos antigos limpos."
+else
+    fail "Falha ao limpar os artefatos."
+fi
+
+if npx --no-install hardhat compile; then
+    COMPILE_OK=1
+    ok "Todos os contratos foram compilados."
+else
+    fail "Falha na compilacao dos contratos."
+fi
+
+# ============================================================
+# 12. ARTEFATOS E ABI
+# ============================================================
+
+section "12. VALIDACAO DOS ARTEFATOS E ABI"
+
+if (( COMPILE_OK == 1 )); then
+
+    if [[ -d artifacts/contracts ]]; then
+        ARTIFACT_COUNT="$(find artifacts/contracts -type f -name '*.json' ! -name '*.dbg.json' | wc -l)"
+
+        if (( ARTIFACT_COUNT > 0 )); then
+            ok "$ARTIFACT_COUNT artefato(s) encontrados."
+        else
+            fail "Nenhum artefato JSON encontrado."
+        fi
+
+        if node <<'NODE'
+const fs = require("fs");
+const path = require("path");
+
+const cfg = JSON.parse(fs.readFileSync(".token-config.json", "utf8"));
+const root = "artifacts/contracts";
+const files = [];
+
+function walk(dir) {
+    if (!fs.existsSync(dir)) return;
+
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, entry.name);
+
+        if (entry.isDirectory()) walk(p);
+        else if (p.endsWith(".json") && !p.endsWith(".dbg.json"))
+            files.push(p);
+    }
+}
+
+walk(root);
+
+const artifacts = [];
+
+for (const file of files) {
+    const a = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (a.contractName && a.abi) artifacts.push({ file, ...a });
+}
+
+function findArtifact(name) {
+    return artifacts.find(a => a.contractName === name);
+}
+
+const main = findArtifact(cfg.contractName);
+
+if (!main) {
+    throw Error("Artefato do contrato principal ausente: " + cfg.contractName);
+}
+
+if (!main.bytecode || main.bytecode === "0x")
+    throw Error("Bytecode do contrato principal vazio");
+
+const signatures = main.abi
+    .filter(x => x.type === "function")
+    .map(x => x.name);
+
+for (const fn of ["name", "symbol", "decimals", "totalSupply", "balanceOf", "transfer", "approve", "allowance", "transferFrom"]) {
+    if (!signatures.includes(fn))
+        throw Error("Funcao ERC20 ausente: " + fn);
+}
+
+for (const fn of ["tokenId", "uniqueFingerprint"]) {
+    if (!signatures.includes(fn))
+        throw Error("Funcao de identificacao ausente: " + fn);
+}
+
+const hasMint = signatures.includes("mint");
+const hasBurn = signatures.includes("burn");
+
+if (hasMint !== cfg.mintEnabled)
+    throw Error("ABI Mint nao corresponde a configuracao.");
+
+if (hasBurn !== cfg.burnEnabled)
+    throw Error("ABI Burn nao corresponde a configuracao.");
+
+if (signatures.includes("owner")) {
+    console.log("Ownable: funcao owner encontrada.");
+} else {
+    console.log("AVISO: funcao owner nao encontrada.");
+}
+
+console.log("Contrato principal:", cfg.contractName);
+console.log("Bytecode:", (main.bytecode.length - 2) / 2, "bytes");
+console.log("Funcoes ABI:", signatures.length);
+console.log("ERC20: validado");
+console.log("Token ID: validado");
+console.log("Fingerprint: validado");
+console.log("Mint:", hasMint ? "HABILITADO" : "DESABILITADO");
+console.log("Burn:", hasBurn ? "HABILITADO" : "DESABILITADO");
+
+const factory = findArtifact("TokenFactory");
+
+if (factory) {
+    if (!factory.bytecode || factory.bytecode === "0x")
+        throw Error("Bytecode da fabrica vazio");
+
+    console.log("Factory: compilada");
+    console.log("Bytecode Factory:", (factory.bytecode.length - 2) / 2, "bytes");
+} else {
+    console.log("AVISO: artefato TokenFactory nao encontrado.");
+}
+
+NODE
+        then
+            ARTIFACT_OK=1
+            ok "ABI e bytecode verificados."
+        else
+            fail "Falha na validacao da ABI ou bytecode."
+        fi
+    else
+        fail "Diretorio artifacts/contracts ausente."
+    fi
+else
+    warn "Validacao dos artefatos ignorada porque a compilacao falhou."
+fi
+
+# ============================================================
+# 13. TESTES AUTOMATIZADOS LOCAIS
+# ============================================================
+
+section "13. TESTES AUTOMATIZADOS - BLOCKCHAIN LOCAL"
+
+if (( COMPILE_OK == 1 )); then
+    if npx --no-install hardhat test; then
+        TEST_OK=1
+        ok "Todos os testes automatizados passaram."
+    else
+        fail "Falha nos testes automatizados."
+    fi
+else
+    warn "Testes ignorados porque a compilacao falhou."
+fi
+
+# ============================================================
+# 14. VERIFICACAO DOS SCRIPTS DE IMPLANTACAO
+# ============================================================
+
+section "14. ANALISE ESTATICA DOS SCRIPTS"
+
+if [[ -f scripts/deploy.js ]]; then
+    ok "Script deploy.js encontrado."
+
+    if grep -q 'getContractFactory\|ContractFactory' scripts/deploy.js; then
+        ok "Referencia a implantacao de contrato encontrada."
+    else
+        warn "Nao foi identificada a criacao de ContractFactory."
+    fi
+
+    if grep -q 'contractName\|TokenFactory\|initialSupply' scripts/deploy.js; then
+        ok "Referencias a configuracao do token encontradas."
+    else
+        warn "Verifique a integracao do deploy.js com a configuracao."
+    fi
+else
+    fail "scripts/deploy.js ausente."
+fi
+
+echo
+echo "IMPORTANTE: deploy.js foi apenas analisado."
+echo "Ele NAO foi executado."
+
+# ============================================================
+# 15. RESUMO DOS ARQUIVOS
+# ============================================================
+
+section "15. RESUMO DOS ARQUIVOS"
+
+echo "Contratos Solidity:"
+find contracts -type f -name '*.sol' -print 2>/dev/null || true
+
+echo
+echo "Scripts JavaScript:"
+find scripts -type f -print 2>/dev/null || true
+
+echo
+echo "Testes:"
+find test -type f -print 2>/dev/null || true
+
+echo
+echo "Artefatos:"
+find artifacts/contracts -type f -name '*.json' ! -name '*.dbg.json' -print 2>/dev/null || true
+
+# ============================================================
+# 16. RESULTADO FINAL
+# ============================================================
+
+section "RESULTADO FINAL"
+
+echo "Aprovados: $OK"
+echo "Avisos:    $WARN"
+echo "Falhas:    $FAIL"
+
+echo
+echo "Compilacao: $([[ "$COMPILE_OK" -eq 1 ]] && echo APROVADA || echo REPROVADA)"
+echo "Artefatos:  $([[ "$ARTIFACT_OK" -eq 1 ]] && echo APROVADOS || echo REPROVADOS)"
+echo "Testes:     $([[ "$TEST_OK" -eq 1 ]] && echo APROVADOS || echo REPROVADOS)"
+
+echo
+echo "Relatorio completo:"
+echo "$LOG"
+
+if (( FAIL > 0 || COMPILE_OK == 0 || ARTIFACT_OK == 0 || TEST_OK == 0 )); then
+    echo
+    echo "RESULTADO: REPROVADO PARA IMPLANTACAO."
+    echo "Corrija as falhas e execute novamente."
+    exit 1
+elif (( WARN > 0 )); then
+    echo
+    echo "RESULTADO: TESTES APROVADOS COM AVISOS."
+    echo "Revise os avisos antes de implantar."
+    exit 0
+else
+    echo
+    echo "RESULTADO: TODAS AS VALIDACOES LOCAIS APROVADAS."
+    echo "Projeto pronto para a proxima etapa de revisao."
+    exit 0
+fi
+EOF
+chmod +x verificar_projeto.sh
+
 
 
 cat > install.sh <<'EOF'
@@ -2601,7 +3294,27 @@ echo "Arquivo install.sh criado e permissao ativada."
 
 
 
+cat >> .gitignore <<'EOF'
 
+node_modules/
+.env
+.token-config.json
+cache/
+artifacts/
+coverage/
+
+# Dependencias e arquivos gerados
+node_modules/
+artifacts/
+cache/
+
+# Logs locais
+logs/
+
+# Segredos e configuracoes privadas
+.env
+.token-config.json
+EOF
 
 
 
