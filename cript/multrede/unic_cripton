@@ -3220,6 +3220,7 @@ if (totalBps >= 10000)
 if (c.network.family !== "evm" || c.network.module !== "evm")
     throw Error("Rede nao compativel com EVM");
 
+
 console.log("Nome:", c.name);
 console.log("Simbolo:", c.symbol);
 console.log("Contrato:", c.contractName);
@@ -3229,6 +3230,59 @@ console.log("Mint:", c.mintEnabled);
 console.log("Burn:", c.burnEnabled);
 console.log("Rede:", c.network.name);
 console.log("Chain ID:", c.network.chainId);
+
+console.log("");
+console.log("==============================================");
+console.log("DISTRIBUICAO INICIAL DAS CARTEIRAS");
+console.log("==============================================");
+
+const supplyBase = BigInt(c.initialSupply);
+const multiplierBase = 10n ** BigInt(c.decimals);
+const totalBase = supplyBase * multiplierBase;
+
+if (
+    c.distribution.length === 1 &&
+    c.distribution[0].address === "" &&
+    c.distribution[0].bps === null
+) {
+    console.log("Carteira implantadora: 100%");
+    console.log("Endereco: sera definido pelo deployer");
+    console.log("Quantidade:", c.initialSupply);
+} else {
+    let allocatedBps = 0;
+
+    for (let i = 0; i < c.distribution.length; i++) {
+        const item = c.distribution[i];
+
+        const bps = i === 0
+            ? 10000 - c.distribution
+                .slice(1)
+                .reduce((sum, entry) => sum + entry.bps, 0)
+            : item.bps;
+
+        allocatedBps += bps;
+
+        const amountBase = totalBase * BigInt(bps) / 10000n;
+        const amountWhole = amountBase / multiplierBase;
+        const amountFraction = amountBase % multiplierBase;
+
+        const amountFormatted = amountFraction === 0n
+            ? amountWhole.toString()
+            : `${amountWhole}.${amountFraction.toString().padStart(c.decimals, "0").replace(/0+$/, "")}`;
+
+        console.log("");
+        console.log(`Carteira ${i + 1}`);
+        console.log("Endereco:", item.address);
+        console.log("Percentual:", (bps / 100).toFixed(2) + "%");
+        console.log("Quantidade:", amountFormatted);
+    }
+
+    console.log("");
+    console.log("Percentual total:", (allocatedBps / 100).toFixed(2) + "%");
+}
+
+console.log("==============================================");
+
 NODE
     then
         CONFIG_VALID=1
